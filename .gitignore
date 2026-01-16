@@ -1,0 +1,93 @@
+.env
+# --------------------
+# Python
+# --------------------
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+.Python
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# --------------------
+# Environment / Secrets
+# --------------------
+.env
+.env.*
+!.env.example
+
+# --------------------
+# Logs
+# --------------------
+*.log
+logs/
+data/logs/
+
+# --------------------
+# Cache / Runtime Data
+# --------------------
+data/cache/
+*.sqlite3
+*.db
+
+# --------------------
+# Vector DB / Embeddings
+# --------------------
+chroma/
+chroma_db/
+vector_store/
+*.bin
+*.index
+
+# --------------------
+# Build / Docker
+# --------------------
+__pypackages__/
+dist/
+build/
+*.egg-info/
+
+# --------------------
+# OS / Editor
+# --------------------
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# --------------------
+# Jupyter / Notebooks
+# --------------------
+.ipynb_checkpoints/
+
+# --------------------
+# Temporary / Scratch
+# --------------------
+tmp/
+temp/
+.cache/
+
+# --------------------
+# Test artifacts
+# --------------------
+.coverage
+htmlcov/
+.pytest_cache/
+
+# --------------------
+# Uvicorn / FastAPI
+# --------------------
+*.pid
+
+# --------------------
+# Docker runtime
+# --------------------
+docker-data/

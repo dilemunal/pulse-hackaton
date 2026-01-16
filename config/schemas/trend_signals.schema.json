@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Pulse Trend Signals Schema",
+  "type": "object",
+  "required": ["context_summary", "marketable_signals"],
+  "properties": {
+    "context_summary": { "type": "string", "minLength": 1, "maxLength": 2000 },
+    "marketable_signals": {
+      "type": "array",
+      "minItems": 8,
+      "maxItems": 30,
+      "items": {
+        "type": "object",
+        "required": ["target_audience_desc", "signal_type", "description", "marketing_hook"],
+        "properties": {
+          "target_audience_desc": { "type": "string", "minLength": 3, "maxLength": 200 },
+          "signal_type": { "type": "string", "minLength": 2, "maxLength": 40 },
+          "description": { "type": "string", "minLength": 5, "maxLength": 240 },
+          "marketing_hook": { "type": "string", "minLength": 5, "maxLength": 280 }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true
+}
