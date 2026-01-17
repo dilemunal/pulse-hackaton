@@ -40,16 +40,18 @@ def get_sales_opportunity(customer_id: int) -> Dict[str, Any]:
         cur.execute(
             """
             SELECT
-                customer_id,
-                persona_label,
-                current_intent,
-                suggested_product,
-                marketing_headline,
-                marketing_content,
-                ai_reasoning,
-                created_at
-            FROM sales_opportunities
-            WHERE customer_id = %s
+                s.customer_id,
+                c.name,
+                s.persona_label,
+                s.current_intent,
+                s.suggested_product,
+                s.marketing_headline,
+                s.marketing_content,
+                s.ai_reasoning,
+                s.created_at
+            FROM sales_opportunities s
+            JOIN customers c ON s.customer_id = c.id
+            WHERE s.customer_id = %s
             LIMIT 1;
             """,
             (customer_id,),
@@ -61,13 +63,14 @@ def get_sales_opportunity(customer_id: int) -> Dict[str, Any]:
 
     return {
         "customer_id": row[0],
-        "persona_label": row[1],
-        "current_intent": row[2],
-        "suggested_product": row[3],
-        "marketing_headline": row[4],
-        "marketing_content": row[5],
-        "ai_reasoning": _parse_ai_reasoning(row[6]),
-        "created_at": row[7].isoformat() if row[7] else None,
+        "name": row[1],
+        "persona_label": row[2],
+        "current_intent": row[3],
+        "suggested_product": row[4],
+        "marketing_headline": row[5],
+        "marketing_content": row[6],
+        "ai_reasoning": _parse_ai_reasoning(row[7]),
+        "created_at": row[8].isoformat() if row[8] else None,
     }
 
 # src/app/app/app.py içine (en alta) eklenecek:
