@@ -69,3 +69,50 @@ def get_sales_opportunity(customer_id: int) -> Dict[str, Any]:
         "ai_reasoning": _parse_ai_reasoning(row[6]),
         "created_at": row[7].isoformat() if row[7] else None,
     }
+
+# src/app/app/app.py içine (en alta) eklenecek:
+
+@app.get("/api/customers-with-opportunities")
+def get_customers_with_opportunities() -> Dict[str, Any]:
+    """
+    Demo Dashboard için Liste:
+    Sadece 'sales_opportunities' tablosunda kaydı olan (işlenmiş) müşterileri getirir.
+    Böylece demoda boş müşteriye tıklama riski olmaz.
+    """
+    with db_cursor() as (_conn, cur):
+        cur.execute(
+            """
+            SELECT
+                c.id,
+                c.name,
+                c.age,
+                c.tariff_segment,
+                c.device_model,
+                s.suggested_product,
+                s.marketing_headline
+            FROM customers c
+            JOIN sales_opportunities s ON c.id = s.customer_id
+            ORDER BY s.created_at DESC
+            LIMIT 50;
+            """
+        )
+        rows = cur.fetchall()
+
+    results = []
+    for r in rows:
+        results.append({
+            "id": r[0],
+            "name": r[1],
+            "age": r[2],
+            "segment": r[3],
+            "device": r[4],
+            "opportunity_summary": {
+                "product": r[5],
+                "headline": r[6]
+            }
+        })
+
+    return {
+        "count": len(results),
+        "items": results
+    }
