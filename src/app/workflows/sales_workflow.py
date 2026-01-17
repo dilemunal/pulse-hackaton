@@ -68,44 +68,72 @@ def _safe_list(x: Any) -> List[Any]:
     return x if isinstance(x, list) else []
 
 
+# DOSYA: src/app/workflows/sales_workflow.py
+# (Sadece load_world_context fonksiyonunu bununla tamamen değiştirin)
+
 def load_world_context(path: str = "data/cache/intelligence.json") -> Dict[str, Any]:
+    print(f"\n🔴 [DEBUG BAŞLADI] Hedef Dosya: {path}")
+    print(f"🔴 [DEBUG] Tam Yol: {os.path.abspath(path)}")
+
+    # 1. Dosya Fiziksel Olarak Var mı?
     if not os.path.exists(path):
-        return {
-            "context_summary": "Gündem verisi yok.",
-            "news_titles": [],
-            "signals": [],
-        }
+        print("❌ [HATA] Dosya sistemde YOK! Trend Job çalıştı mı?")
+        return {"context_summary": "Veri Yok", "news_titles": [], "signals": []}
+    
+    # 2. JSON Olarak Okunabiliyor mu?
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        print("✅ [BAŞARILI] JSON dosyası yüklendi.")
+        print(f"🔍 [DEBUG] JSON Kök Anahtarlar: {list(data.keys())}") 
+    except Exception as e:
+        print(f"❌ [HATA] JSON parse hatası: {e}")
+        return {"context_summary": "Veri Bozuk", "news_titles": [], "signals": []}
 
-    with open(path, "r", encoding="utf-8") as f:
-        data = json.load(f)
+    # 3. 'intelligence' Anahtarı Var mı?
+    intel = data.get("intelligence")
+    if not intel:
+        print("❌ [HATA] JSON içinde 'intelligence' anahtarı EKSİK veya BOŞ!")
+        return {"context_summary": "Eksik Veri", "news_titles": [], "signals": []}
+    
+    print(f"🔍 [DEBUG] 'intelligence' Anahtarları: {list(intel.keys())}")
 
-    intel = data.get("intelligence", {}) or {}
-    raw = data.get("raw_inputs", {}) or {}
-
-    # 1) Best effort: use explicit news items/titles if exist
-    news_items = _safe_list(intel.get("news_items"))
-    news_titles: List[str] = []
-    if news_items:
-        for it in news_items[:60]:
-            if isinstance(it, dict):
-                t = str(it.get("title", "")).strip()
-                if t:
-                    news_titles.append(t)
+    # 4. 'marketable_signals' Listesi Var mı?
+    signals = intel.get("marketable_signals")
+    if signals is None:
+        print("❌ [HATA] 'marketable_signals' anahtarı hiyerarşide YOK!")
+    elif isinstance(signals, list):
+        print(f"✅ [BİLGİ] 'marketable_signals' bulundu. Eleman Sayısı: {len(signals)}")
+        if len(signals) > 0:
+            print(f"📄 [ÖRNEK] İlk Sinyal Başlığı: {signals[0].get('title', 'Başlık Yok')}")
+            print(f"📄 [ÖRNEK] İlk Sinyal Tipi: {signals[0].get('signal_type', 'Tip Yok')}")
     else:
-        raw_news = raw.get("news")
-        if isinstance(raw_news, list):
-            news_titles = [str(x).strip() for x in raw_news if str(x).strip()][:60]
-        else:
-            news_titles = []
+        print(f"❌ [HATA] 'marketable_signals' bir liste değil! Tipi: {type(signals)}")
 
-    # 2) Signals (brand-agnostic)
-    signals = _safe_list(intel.get("marketable_signals"))
-    context_summary = str(intel.get("context_summary", "")).strip() or "Bugünün gündemi derlendi."
+    # 5. Veriyi Topla (Fallback YOK, Sadece Gerçek Veri)
+    news_titles = []
+    
+    # Sinyallerden başlıkları al
+    if isinstance(signals, list):
+        for s in signals:
+            if isinstance(s, dict) and s.get("title"):
+                news_titles.append(str(s["title"]).strip())
+    
+    # Eğer sinyaller boşsa 'raw_inputs' kontrol et (debug amaçlı)
+    if not news_titles:
+        print("⚠️ [UYARI] Sinyallerden başlık çıkmadı. Raw Inputs kontrol ediliyor...")
+        raw_news = data.get("raw_inputs", {}).get("news", [])
+        if raw_news:
+            print(f"ℹ️ [BİLGİ] Raw Inputs içinde {len(raw_news)} haber bulundu.")
+            # İsterseniz burayı açabilirsiniz ama şimdilik sadece debug ediyoruz.
+            # news_titles = [str(x) for x in raw_news]
+
+    print(f"🏁 [SONUÇ] Sales Workflow'a giden toplam başlık sayısı: {len(news_titles)}")
 
     return {
-        "context_summary": context_summary,
+        "context_summary": str(intel.get("context_summary", "Gündem Verisi")),
         "news_titles": news_titles,
-        "signals": signals,
+        "signals": signals if isinstance(signals, list) else [],
     }
 
 
@@ -290,6 +318,7 @@ async def decide_sales_strategy(
 
     # Gündem Başlıkları
     news_titles = (world_context.get("news_titles") or [])[:25]
+    print(f"\n[AI STRATEJİST] Müşteri ID: {customer_profile.get('id')} - Gönderilen Haber Sayısı: {len(news_titles)}")
 
     system_prompt = """
     Sen Vodafone Pulse sisteminin "Yaratıcı Satış Stratejisti"sin.
