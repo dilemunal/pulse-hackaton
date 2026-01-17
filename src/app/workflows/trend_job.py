@@ -453,6 +453,7 @@ Telco bağları (en az biri olmalı):
 Kurallar:
 - description: 1 cümle, somut, HALÜSİNASYON YOK. Başlıkta olmayan teknik/spec/numara uydurma.
 - marketing_hook: "Segment: ... | Senaryo: ... | İhtiyaç: ..." formatına yakın, markasız ve iddiasız.
+-Marketing Hook yazarken 'Genel ihtiyaç' deme. Olayın kendisine atıf yap. Örn: 'Eurovision finalini canlı izlemek ve oy vermek için...' gibi spesifik ol.
 
 Kırmızı çizgiler:
 - Vodafone, kampanya adı, paket adı, ortaklık iddiası YAZMA.
@@ -744,7 +745,7 @@ async def run_trend_job() -> Dict[str, Any]:
     load_dotenv(dotenv_path=os.getenv("DOTENV_PATH", ".env"))
 
     # IMPORTANT: http/proxy settings unchanged (build_async_httpx_client is the same)
-    http_client = build_async_httpx_client(timeout_s=20.0)
+    http_client = build_async_httpx_client(timeout_s=120.0)
 
     try:
         rss_task = fetch_rss_items(http_client)

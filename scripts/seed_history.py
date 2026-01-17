@@ -1,14 +1,10 @@
 # DOSYA: scripts/seed_history.py
 """
-Seed purchase_history table (Pulse demo).
+Seed purchase_history table (Pulse demo) - SMART VERSION.
 
-Creates:
-- purchase_history table
-
-Segment-aware (light):
-- Red -> more digital channels
-- FreeZone -> mostly digital, some physical
-- Prepaid/Kolay Paket -> mixed channels
+Amaç:
+- Rastgele veri yerine "Tutarlı" (Consistent) satın alma geçmişi oluşturmak.
+- Böylece AI, geçmişe bakınca "Bu müşteri Gamer", "Bu müşteri Gezgin" diyebilsin.
 """
 
 from __future__ import annotations
@@ -21,23 +17,36 @@ from dotenv import load_dotenv
 
 from src.db.connection import db_cursor
 
-PRODUCTS_RED = [
-    "Red Pass İletişim", "Yurt Dışı 1GB Roaming", "Apple Music Üyeliği",
-    "YouTube Premium Ek Paket", "Sınırsız Video Pass", "Red Ekstra 10GB", "Araç İçi Wi-Fi"
-]
-PRODUCTS_FREEZONE = [
-    "Gamer Pass (Sınırsız Oyun)", "Sınırsız Instagram Paketi", "Twitch Bit Paketi",
-    "Haftalık 10GB (Hediye Çarkı)", "Spotify Premium Üyeliği", "PubG Mobile UC"
-]
-PRODUCTS_PREPAID = [
-    "Haftalık 5GB", "Günlük 1GB", "100 TL Yükleme", "200 TL Yükleme",
-    "Kolay Paket 20GB", "TL Transfer"
-]
-PRODUCTS_UYUMLU = [
-    "Ekstra 1GB İnternet", "1000 DK Konuşma Paketi", "SMS Paketi",
-    "Tarife Yenileme", "Güvenli Depo 50GB", "Fatura Ödeme"
+# --- 1. ÖZELLEŞTİRİLMİŞ ÜRÜN HAVUZLARI ---
+
+# Gamer Profili (Gençler, FreeZone)
+PRODUCTS_GAMER = [
+    "Gamer Pass (Sınırsız Oyun)", "PubG Mobile 60 UC", "Valorant VP", 
+    "Steam Cüzdan Kodu 100 TL", "Discord Nitro Üyeliği", "Twitch Bit Paketi",
+    "Sınırsız Discord & Twitch"
 ]
 
+# Gezgin Profili (Red, Yüksek Gelir)
+PRODUCTS_TRAVELER = [
+    "Yurt Dışı 1GB Roaming", "Her Şey Dahil Pasaport (Günlük)", 
+    "Yurt Dışı Konuşma 60 DK", "Pasaport Dünya", "Yurt Dışı Avantaj Paketi",
+    "Seyahat Yanımda Sigortası"
+]
+
+# Dijital/Video Profili (Video tüketenler)
+PRODUCTS_STREAMER = [
+    "Sınırsız Video Pass", "YouTube Premium Üyeliği", "Netflix Standart Paket",
+    "Sınırsız Sosyal Pass", "Spotify Premium", "Apple Music Üyeliği"
+]
+
+# Geleneksel/Standart (Daha yaşlı veya düşük bütçe)
+PRODUCTS_BASIC = [
+    "Haftalık 1GB", "Günlük 500MB", "SMS Paketi", 
+    "1000 DK Konuşma", "Fatura Ödeme", "Tarife Yenileme",
+    "Ekstra 2GB İnternet"
+]
+
+# Kanal Tercihleri
 CHANNELS_DIGITAL = ["Yanımda App", "Web", "Tobi"]
 CHANNELS_PHYSICAL = ["Vodafone Store", "Call Center", "SMS"]
 
@@ -66,7 +75,8 @@ def seed_history(*, random_seed: int = 42) -> int:
             """
         )
 
-        cur.execute("SELECT id, tariff_segment, subscription_type, age FROM customers;")
+        # Müşterileri çek (Yaş ve Segment verisi kritik)
+        cur.execute("SELECT id, tariff_segment, subscription_type, age, arpu FROM customers;")
         customers = cur.fetchall()
 
         insert_query = """
@@ -76,28 +86,59 @@ def seed_history(*, random_seed: int = 42) -> int:
 
         rows: List[Tuple] = []
 
-        for cid, segment, sub_type, age in customers:
-            purchase_count = random.randint(0, 8)
-            for _ in range(purchase_count):
-                if segment == "Red":
-                    product = random.choice(PRODUCTS_RED)
-                    price = random.uniform(50, 300)
-                    channel = random.choice(CHANNELS_DIGITAL)
-                elif "FreeZone" in segment:
-                    product = random.choice(PRODUCTS_FREEZONE)
-                    price = random.uniform(20, 150)
-                    channel = random.choice(CHANNELS_DIGITAL) if random.random() < 0.75 else random.choice(CHANNELS_PHYSICAL)
-                elif segment == "Kolay Paket" or sub_type == "Prepaid":
-                    product = random.choice(PRODUCTS_PREPAID)
-                    price = random.uniform(30, 250)
-                    channel = random.choice(CHANNELS_DIGITAL + CHANNELS_PHYSICAL)
-                else:
-                    product = random.choice(PRODUCTS_UYUMLU)
-                    price = random.uniform(10, 100)
-                    channel = random.choice(CHANNELS_PHYSICAL) if age > 60 else random.choice(CHANNELS_DIGITAL + CHANNELS_PHYSICAL)
+        for cid, segment, sub_type, age, arpu in customers:
+            # --- 2. GİZLİ PERSONA ATAMASI (Pattern Injection) ---
+            # Müşteriye bir "Karakter" biçiyoruz ki geçmişi tutarlı olsun.
+            
+            archetype = "STANDARD"
+            
+            # Kural: 30 yaş altı ve FreeZone ise yüksek ihtimal Gamer veya Streamer
+            if age < 30 and ("FreeZone" in str(segment) or "Genç" in str(segment)):
+                archetype = random.choices(["GAMER", "STREAMER", "STANDARD"], weights=[0.5, 0.3, 0.2])[0]
+            
+            # Kural: Red segmenti veya yüksek ARPU ise Gezgin olma ihtimali var
+            elif str(segment) == "Red" or float(arpu or 0) > 400:
+                archetype = random.choices(["TRAVELER", "STREAMER", "STANDARD"], weights=[0.4, 0.3, 0.3])[0]
+            
+            # Kural: Yaşlı veya Ön Ödemeli ise Standart
+            elif age > 50 or sub_type == "Prepaid":
+                archetype = "STANDARD"
 
-                days_ago = random.randint(1, 365)
-                score = random.randint(2, 5)
+            # --- 3. HARCAMA ÜRETİMİ ---
+            purchase_count = random.randint(1, 10) # En az 1 hareket olsun
+            
+            for _ in range(purchase_count):
+                # Archetype'a göre ürün havuzunu seç
+                if archetype == "GAMER":
+                    # %80 ihtimalle oyun, %20 genel
+                    pool = PRODUCTS_GAMER if random.random() < 0.8 else PRODUCTS_BASIC + PRODUCTS_STREAMER
+                elif archetype == "TRAVELER":
+                    pool = PRODUCTS_TRAVELER if random.random() < 0.7 else PRODUCTS_STREAMER + PRODUCTS_BASIC
+                elif archetype == "STREAMER":
+                    pool = PRODUCTS_STREAMER if random.random() < 0.8 else PRODUCTS_BASIC
+                else:
+                    pool = PRODUCTS_BASIC
+
+                product = random.choice(pool)
+                
+                # Fiyat belirle (Ürün adına göre kabaca)
+                if "Pass" in product or "Üyelik" in product:
+                    price = random.uniform(80, 200)
+                elif "Roaming" in product or "Pasaport" in product:
+                    price = random.uniform(150, 400)
+                elif "UC" in product or "Cüzdan" in product:
+                    price = random.uniform(50, 300)
+                else:
+                    price = random.uniform(20, 100)
+
+                # Kanal seçimi (Gençler dijital, yaşlılar fiziksel)
+                if age < 40:
+                    channel = random.choice(CHANNELS_DIGITAL)
+                else:
+                    channel = random.choice(CHANNELS_DIGITAL + CHANNELS_PHYSICAL)
+
+                days_ago = random.randint(1, 360)
+                score = random.randint(1, 5) # AI için engagement skoru (opsiyonel)
 
                 rows.append((cid, product, days_ago, channel, round(price, 2), score))
 
@@ -107,4 +148,4 @@ def seed_history(*, random_seed: int = 42) -> int:
 
 if __name__ == "__main__":
     total = seed_history()
-    print(f"✅ Seed OK: {total} purchase_history kaydı basıldı.")
+    print(f"✅ Smart Seed OK: {total} adet tutarlı purchase_history kaydı basıldı.")

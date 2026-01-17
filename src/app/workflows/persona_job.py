@@ -125,11 +125,20 @@ def _validate_one(item: Dict[str, Any]) -> Dict[str, Any]:
     interests = item.get("interests") or []
     if not isinstance(interests, list):
         interests = []
-    interests = [str(x)[:50] for x in interests][:3]
-    while len(interests) < 3:
-        interests.append("Genel")
+    
+    # Temizle ve string'e çevir
+    interests = [str(x)[:50] for x in interests if x and str(x).lower() != "genel"]
+    
+    # Eğer hiç ilgi alanı yoksa, "Keşfetmeye Açık" gibi daha pozitif bir etiket kullan
+    # ya da Sales AI'ın "Genel" kelimesine alerjisi olduğu için boş bırak.
+    if not interests:
+         interests = ["Dijital Yaşam"] # 'Genel' yerine daha havalı bir dolgu
+    
+    # 3'e tamamlama zorunluluğunu (while döngüsünü) KALDIRIN.
+    # Postgres Array tipi zaten değişken uzunluğu destekler.
+    # LLM 2 tane bulduysa 2 tane kalsın, zorla "Genel" eklemeyelim.
 
-    label = str(item.get("label", "Genel Persona"))[:80]
+    label = str(item.get("label", "Müşteri"))[:80] # 'Genel Persona' yerine 'Müşteri' veya 'Değerli Üyemiz'
     reasoning = str(item.get("reasoning", "")).strip()[:400]
 
     return {

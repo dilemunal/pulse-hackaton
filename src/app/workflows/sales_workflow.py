@@ -13,18 +13,11 @@ Core idea (what jury should understand):
 
 Data sources:
 1) World Context: data/cache/intelligence.json (Trend Job çıktısı)
-   - Beklenen: raw_inputs.news (başlıklar) ve/veya intelligence.marketable_signals
 2) Customer 360: Postgres
-   - customers + customer_behavior.metrics_json + purchase_history
 3) Product Catalog RAG: Chroma (collection: pulse_products)
-   - Postgres ürün tablosundan build_catalog_index ile vektörlenmiş katalog
 
 Output:
 - Postgres table: sales_opportunities
-  - suggested_product
-  - marketing_headline
-  - marketing_content
-  - ai_reasoning (JSON string: selected_news + customer_facts + product_facts + rationale)
 """
 
 from __future__ import annotations
@@ -76,16 +69,6 @@ def _safe_list(x: Any) -> List[Any]:
 
 
 def load_world_context(path: str = "data/cache/intelligence.json") -> Dict[str, Any]:
-    """
-    Returns a normalized world context payload used by LLM.
-
-    We prefer REAL "news titles" (headlines) over generic hooks.
-    Trend Job ideally writes either:
-      - raw_inputs.news: [title, title, ...]
-      - intelligence.news_items: [{title, source, published_at?}, ...]
-
-    We keep both: "news_titles" + "signals" (brand-agnostic hooks).
-    """
     if not os.path.exists(path):
         return {
             "context_summary": "Gündem verisi yok.",
@@ -113,12 +96,10 @@ def load_world_context(path: str = "data/cache/intelligence.json") -> Dict[str, 
         if isinstance(raw_news, list):
             news_titles = [str(x).strip() for x in raw_news if str(x).strip()][:60]
         else:
-            # legacy trend_job: raw_inputs may not include actual titles; fallback to "news_count" only
             news_titles = []
 
     # 2) Signals (brand-agnostic)
     signals = _safe_list(intel.get("marketable_signals"))
-
     context_summary = str(intel.get("context_summary", "")).strip() or "Bugünün gündemi derlendi."
 
     return {
@@ -132,12 +113,6 @@ def load_world_context(path: str = "data/cache/intelligence.json") -> Dict[str, 
 # Customer 360 (minimal demo)
 # -----------------------------
 def fetch_customer_batch(*, limit: int, offset: int) -> List[Dict[str, Any]]:
-    """
-    Minimal 360:
-    - customers (persona/interest/risk)
-    - customer_behavior.metrics_json (intent, data_left, billing summary)
-    - purchase_history (last 5)
-    """
     with db_cursor() as (_conn, cur):
         cur.execute(
             """
@@ -210,7 +185,7 @@ def fetch_customer_batch(*, limit: int, offset: int) -> List[Dict[str, Any]]:
                     "full_name": full_name,
                     "first_name": first_name,
                     "age": age,
-                    "city": None,  # if you have it in table later, add
+                    "city": None,
                     "tariff_segment": r[3],
                     "subscription_type": r[4],
                     "device_model": r[5],
@@ -246,8 +221,6 @@ def retrieve_product_candidates(
 ) -> List[Dict[str, Any]]:
     """
     Retrieve top-k product docs from Chroma.
-    Returns:
-      [{"product_code":..., "doc":..., "metadata":..., "distance":...}, ...]
     """
     emb_client = EmbeddingsClient()
     try:
@@ -285,51 +258,125 @@ def retrieve_product_candidates(
 
 
 # -----------------------------
-# LLM: SALES BRAIN (single step)
+# AŞAMA 1: STRATEJİST AI (KARAR VERİCİ)
+# -----------------------------
+async def decide_sales_strategy(
+    llm: AsyncOpenAI,
+    *,
+    customer_profile: Dict[str, Any],
+    world_context: Dict[str, Any]
+) -> Dict[str, Any]:
+    """
+    Stratejist AI: Müşteriyi ve Gündemi analiz eder.
+    Hangi haberin kullanılacağına ve hangi ürün kategorisinin aranacağına AI karar verir.
+    """
+    
+    # Müşteri Profilini Hazırla
+    cust_summary = {
+        "demographics": {
+            "age": customer_profile.get("age"),
+            "segment": customer_profile.get("tariff_segment"),
+            "persona": customer_profile.get("persona"),
+            "device": customer_profile.get("device_model")
+        },
+        "interests": customer_profile.get("interests", []),
+        "history": customer_profile.get("history"),  # Geçmiş alımlar
+        "behavior": {
+            "current_intent": customer_profile.get("intent"),
+            "data_left_gb": customer_profile.get("data_left_gb"),
+            "churn_risk": customer_profile.get("risk")
+        }
+    }
+
+    # Gündem Başlıkları
+    news_titles = (world_context.get("news_titles") or [])[:25]
+
+    system_prompt = """
+    Sen Vodafone Pulse sisteminin "Yaratıcı Satış Stratejisti"sin.
+    Görevin: Müşteri verisi ile Gündem arasında "Bağ Kurmak" (Connecting the dots).
+
+    DURUM:
+    Müşterilerimiz için "Genel Kampanya" en son çaredir. Bizim farkımız, gündemi kullanarak kişisel bağ kurmaktır.
+    
+    TALİMATLAR:
+    1. Asla hemen pes edip "GENEL_KAMPANYA" seçme. Haber listesindeki en ufak ipucunu bile değerlendir.
+    2. YARATICI BAĞLAR KUR:
+       - Haber: "Hafta sonu yağmurlu" -> Strateji: "Evde kalıp film izle (Video Pass)" veya "Oyun oyna (Gamer Pass)".
+       - Haber: "Okullar tatil" -> Strateji: "Gençler için sosyal medya paketi" veya "Karne hediyesi cihaz"."Seyahat için HER SEY DAHIL PASAPORT","Restoranlarda VPAY ile indirim".
+       - Haber: "Popüler bir şarkı viral oldu" -> Strateji: "Spotify/Müzik Pass".
+       - Müşterinin ilgisi "Video" ve gündem boş mu? -> "Hafta sonu" kartını veya "Havalar soğudu" kartını kullan.
+    3. Eğer müşterinin ilgisi ile haber arasında %10 bile alaka varsa, o haberi SEÇ.
+
+    ANALİZ SÜRECİ:
+    - Müşterinin [İlgi Alanları + Geçmişi + Niyeti] ne?
+    - Gündemde buna "kanca" olabilecek ne var?
+    
+    ÇIKTI FORMATI (JSON):
+    {
+        "selected_news_title": "Seçilen haber başlığı (Mümkünse dolu olsun)",
+        "strategy_reasoning": "Zorlama da olsa kurduğun mantık (Örn: Haber X, ama müşteri Video seviyor, o yüzden 'Hafta Sonu Keyfi' konseptiyle bağlıyorum.)",
+        "search_query": "Ürün kataloğu için arama terimi (Örn: 'sınırsız video pass')"
+    }
+    """
+
+    user_payload = {
+        "customer_analysis_data": cust_summary,
+        "available_agenda_items": news_titles
+    }
+
+    try:
+        resp = await llm.chat.completions.create(
+            model=SETTINGS.LLM_CHAT_MODEL,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": json.dumps(user_payload, ensure_ascii=False)},
+            ],
+            temperature=0.4,
+            response_format={"type": "json_object"},
+            extra_body={"metadata": {"username": SETTINGS.username, "pwd": SETTINGS.pwd}},
+        )
+        return json.loads(resp.choices[0].message.content)
+    except Exception as e:
+        print(f"Strateji AI Hatası: {e}")
+        # Fallback
+        return {
+            "selected_news_title": "YOK",
+            "search_query": f"{cust_summary['demographics']['segment']} popüler paketler",
+            "strategy_reasoning": "AI yanıt veremedi, varsayılan segment önerisi yapılıyor."
+        }
+
+
+# -----------------------------
+# AŞAMA 2: SALES BRAIN (UYGULAYICI)
 # -----------------------------
 def build_sales_brain_system_prompt() -> str:
     return """
-Sen Pulse sistemindeki "Satış & Pazarlama Beyni"sin.
+Sen Pulse sistemindeki "Satış & Pazarlama Beyni"sin. Stratejistin belirlediği yoldan ilerleyerek son vuruşu yapacaksın.
 
-Bir pazarlamacı gibi düşün:
-- En büyük avantajın: anlık GÜNDEM (somut haber başlıkları).
-- Müşteri bağlamını biliyorsun: persona / interests / intent / data_left / history.
-- Ürün kataloğu adayları (RAG) elinde: sadece bu adaylar içinden ürün seçeceksin.
--Müşterinin ilgi alanları, ihtiyaçları ve geçmiş satın alma davranışlarını dikkate alarak anlık gündemdi kullan ve ürünlerin için kampanya metni oluştur.
-
-Yapman gereken:
-1) Haber başlıklarından (news_titles) 1-2 tane seç, müşteriye uygun olanları.
-2) Ürün adaylarından (product_candidates) en uygun olanını seç.
-3) Kısa, ilgi çekici bir başlık (marketing_headline) oluştur. Kişisel ve gündeme uygun olsun. Haber başlıklarından esinlenebilirsin.
-4) Kişisel, samimi ve gündeme bağlı bir içerik (marketing_content) yaz. Herkese hitap etme, müşteriye özel yap. Müşterinin ilk ismini kullanabilirsin. 
- Örnek: "Sena ! Sims4 oyun paketi çıktığını duyduk, sen rahatça oynayabil diye sana özel ekstra 10GB paket sadece X TL ! Keyfini çıkar!"
-5) Neden bu kararları verdiğini (seçilen haberler, müşteri bağlamı, ürün özellikleri) yapılandırılmış şekilde açıkla (ai_reasoning).
-
+Görevin:
+1. Sana verilen "selected_news" (Gündem) ve "product_candidates" (Aday Ürünler) arasından en mantıklı eşleşmeyi yap.
+2. Müşteriye özel, samimi, Türkçe bir pazarlama mesajı yaz.
 
 Kırmızı çizgiler:
-- Uydurma yok: haber olarak SADECE verilen news_titles içinden seçtiğin başlığı referans alabilirsin.
-- Ürün olarak SADECE verilen product_candidates içinden seçebilirsin.
-- “Vodafone X ortaklığı”, “bedava/ücretsiz” gibi doğrulanması zor iddialar YAZMA.
+- Uydurma yok: SADECE sana verilen haber başlığını ve ürünleri kullan.
+- "Vodafone X ortaklığı", "bedava/ücretsiz" gibi doğrulanması zor iddialar YAZMA.
 - Türkçe yaz. Samimi, kişisel, sıcak. Ama "aşırı satış/abartı" yok.
 - Her mesaj "Selam" ile başlamasın. Yaşa göre hitap değişebilir:
   - genç (<=28) ise first_name ile daha enerjik,
   - yetişkin ise first_name + daha dengeli,
   - first_name yoksa nötr hitap.
 
-ÇIKTI:
-SADECE JSON döndür.
-Şema:
+ÇIKTI (JSON):
 {
-  "selected_news_titles": ["..."],            // 1-2 adet, sadece inputtan
-  "chosen_product_code": "....",             // sadece candidates içinden
-  "suggested_product": "....",               // chosen ürün adı
-  "marketing_headline": "....",              // kısa, ilgi çekici
-  "marketing_content": "....",               // 2-4 cümle, kişisel + gündem bağlantılı + ürün önerisi
-  "ai_reasoning": {                          // KAYDETMEK İÇİN
-    "customer_facts_used": ["...","..."],     // persona, interests, intent, history gibi somut şeyler
-    "world_facts_used": ["...","..."],        // seçtiğin haber başlıkları
-    "product_facts_used": ["...","..."],      // aday üründen (doc/metadata) aldığın gerçek özellikler
-    "why_this_product_now": ["...","..."]     // karar mantığı (gündem + müşteri + ürün)
+  "selected_news_titles": ["..."],            // Kullandığın haber
+  "chosen_product_code": "....",             // Seçtiğin ürünün kodu
+  "suggested_product": "....",               // Seçtiğin ürünün adı
+  "marketing_headline": "....",              // Kısa, ilgi çekici başlık
+  "marketing_content": "....",               // 2-4 cümle, kişisel mesaj
+  "ai_reasoning": {                          
+    "customer_facts_used": ["..."],     
+    "product_facts_used": ["..."],      
+    "why_this_product_now": ["..."]     
   }
 }
 """.strip()
@@ -342,18 +389,10 @@ async def run_sales_brain(
     cust: Dict[str, Any],
     product_candidates: List[Dict[str, Any]],
 ) -> Dict[str, Any]:
-    """
-    LLM gets:
-    - world.news_titles (real headlines)
-    - customer facts
-    - product candidates (RAG)
-    Produces final output + structured reasons.
-    """
     payload = {
         "world": {
+            "selected_news": world.get("selected_news", ""),  # Sadece seçilen haberi göster
             "context_summary": world.get("context_summary", ""),
-            "news_titles": (world.get("news_titles") or [])[:40],
-            "signals": (world.get("signals") or [])[:12],  # optional fallback context
         },
         "customer": cust,
         "product_candidates": [
@@ -365,7 +404,7 @@ async def run_sales_brain(
                 "segment": (c.get("metadata", {}) or {}).get("segment"),
                 "channel": (c.get("metadata", {}) or {}).get("channel"),
                 "price_try": (c.get("metadata", {}) or {}).get("price_try"),
-                "doc": (c.get("doc", "")[:700]),  # keep enough to ground
+                "doc": (c.get("doc", "")[:700]),
             }
             for c in product_candidates[:8]
         ],
@@ -430,16 +469,6 @@ def save_opportunities(rows: List[Tuple]) -> None:
 # Orchestrator
 # -----------------------------
 async def run_sales_workflow(*, batch_size: int = 10, max_total: Optional[int] = 30) -> int:
-    """
-    Demo run:
-    - Reads world context once
-    - Processes customer batches
-    - For each customer:
-        1) build a retrieval query (deterministic heuristic + LLM will still choose from candidates)
-        2) retrieve candidates via RAG
-        3) LLM composes: chosen product + message + structured reasons (grounded)
-        4) save to Postgres
-    """
     setup_sales_table()
     world = load_world_context()
 
@@ -464,35 +493,36 @@ async def run_sales_workflow(*, batch_size: int = 10, max_total: Optional[int] =
             out_rows: List[Tuple] = []
 
             for cust in customers:
-                # --- RAG query heuristic (fast, deterministic) ---
-                # We intentionally include: interests + intent + device + a hint from headlines if exist.
-                interests = ", ".join(cust.get("interests") or [])
-                intent = cust.get("intent", "")
-                device = cust.get("device_model", "")
-                headline_hint = ""
-                if world.get("news_titles"):
-                    headline_hint = str(world["news_titles"][0])[:80]
+                # --- 1. STRATEJİST AI: Gündem ve Strateji Belirle ---
+                strategy = await decide_sales_strategy(
+                    llm,
+                    customer_profile=cust,
+                    world_context=world
+                )
 
-                query_text = f"{interests}. intent: {intent}. device: {device}. gündem: {headline_hint}".strip()
-                if not query_text:
-                    query_text = "Genel iletişim paketi"
+                ai_search_query = strategy.get("search_query", "")
+                selected_news = strategy.get("selected_news_title", "")
+                strategy_reasoning = strategy.get("strategy_reasoning", "")
+                
+                # Eğer AI saçmalarsa veya boş dönerse diye basit fallback
+                if not ai_search_query:
+                    ai_search_query = f"{cust.get('tariff_segment')} paket"
 
-                # Metadata filter heuristic (optional)
-                # If very low data, prefer addon/data topups
-                md_filter: Optional[Dict[str, Any]] = None
-                if float(cust.get("data_left_gb", 0) or 0) <= 1.0:
-                    md_filter = {"category": "Addon"}
-
+                # --- 2. RAG: AI Sorgusu ile Ürün Bul ---
                 candidates = retrieve_product_candidates(
-                    query_text=query_text,
-                    where=md_filter,
+                    query_text=ai_search_query,
                     k=6,
                 )
 
-                # If nothing retrieved (shouldn't happen if index exists), keep empty candidates
+                # --- 3. SALES BRAIN: Metni Yaz ---
+                # Brain'in kafasını karıştırmamak için sadece seçilen haberi gönderiyoruz
+                focused_world = world.copy()
+                if selected_news and selected_news != "YOK":
+                    focused_world["selected_news"] = selected_news
+                
                 decision = await run_sales_brain(
                     llm,
-                    world=world,
+                    world=focused_world,
                     cust=cust,
                     product_candidates=candidates,
                 )
@@ -500,7 +530,6 @@ async def run_sales_workflow(*, batch_size: int = 10, max_total: Optional[int] =
                 chosen_code = _safe_str(decision.get("chosen_product_code"), 120)
                 chosen = _pick_candidate_by_code(candidates, chosen_code)
 
-                # Enforce "no hallucinated product": if code invalid, fallback to first candidate
                 if not chosen and candidates:
                     chosen = candidates[0]
                     chosen_code = (chosen.get("product_code") or "").strip()
@@ -509,44 +538,17 @@ async def run_sales_workflow(*, batch_size: int = 10, max_total: Optional[int] =
                 if not suggested_product and chosen:
                     suggested_product = _safe_str(chosen.get("product_name"), 200)
 
-                # Final structured reasoning (always store)
+                # Final Reasoning: Stratejistin gerekçesini de ekle
                 ai_reasoning_obj = decision.get("ai_reasoning")
                 if not isinstance(ai_reasoning_obj, dict):
                     ai_reasoning_obj = {}
-
-                # Hard-grounding: also store exact artifacts used
-                used_news = decision.get("selected_news_titles")
-                if not isinstance(used_news, list):
-                    used_news = []
-                used_news = [str(x)[:220] for x in used_news][:2]
-
-                # Add hard facts (so UI can show "bu yüzden")
-                grounding = {
-                    "selected_news_titles": used_news,
-                    "chosen_product_code": chosen_code,
-                    "chosen_product_name": suggested_product,
-                    "candidate_snapshot": [
-                        {
-                            "product_code": c.get("product_code"),
-                            "product_name": c.get("product_name"),
-                            "category": (c.get("metadata", {}) or {}).get("category"),
-                            "distance": c.get("distance"),
-                        }
-                        for c in candidates[:5]
-                    ],
-                    "customer_snapshot": {
-                        "id": cust.get("id"),
-                        "first_name": cust.get("first_name"),
-                        "age": cust.get("age"),
-                        "persona": cust.get("persona"),
-                        "interests": cust.get("interests"),
-                        "intent": cust.get("intent"),
-                        "data_left_gb": cust.get("data_left_gb"),
-                        "history": cust.get("history"),
-                    },
+                
+                ai_reasoning_obj["strategist_reasoning"] = strategy_reasoning
+                ai_reasoning_obj["grounding"] = {
+                    "selected_news": selected_news,
+                    "search_query": ai_search_query,
+                    "chosen_product_code": chosen_code
                 }
-
-                ai_reasoning_obj["grounding"] = grounding
 
                 out_rows.append(
                     (
