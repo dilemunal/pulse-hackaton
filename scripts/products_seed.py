@@ -1,12 +1,12 @@
+# DOSYA: scripts/products_seed.py
 """
 Seed ~120 realistic Vodafone TR-like products into Postgres for Pulse (demo).
+(GELİŞTİRİLMİŞ VERSİYON - AI DOSTU AÇIKLAMALAR İLE)
 
-What this gives you:
-- A "stable" Product Catalog knowledge source (SQL truth)
-- Enough variety + metadata for RAG filters (category/segment/channel/contract/eligibility hints)
-
-AI concept note:
-- This is the "catalog truth source". RAG index will be derived from here.
+Değişiklikler:
+- Ürünlere 'description' ve 'keywords' eklendi.
+- Video Pass ile İletişim Pass arasındaki fark yapay zekaya öğretildi.
+- Red tarifelerine ve cihazlara persona ipuçları eklendi.
 """
 
 from __future__ import annotations
@@ -54,7 +54,6 @@ def seed_products(*, random_seed: int = 42) -> int:
 
         # ------------------------------------------------------------
         # 1) Faturalı Tarifeler (Red, Online Fırsat, vb.)
-        # Vodafone site isim kalıpları: "Online Fırsat 2025 20 GB" vb. :contentReference[oaicite:1]{index=1}
         # ------------------------------------------------------------
         red_core = [
             ("Red 20GB", 520),
@@ -80,12 +79,16 @@ def seed_products(*, random_seed: int = 42) -> int:
                         "contract_months": 12,
                         "eligible": {"requires_no_overdue_bill": True},
                         "source": "vodafone_tr_like",
+                        # AI İÇİN EKLENEN KISIM:
+                        "description": "Bol internetli, yurt dışında da geçerli, her şey dahil premium tarife. Seyahat edenler ve iş insanları için ideal.",
+                        "keywords": ["seyahat", "yurt dışı", "premium", "iş", "konfor", "sınırsız", "roaming"],
+                        "best_for_persona": "Gezgin / İş İnsanı"
                     },
                 )
             )
             n += 1
 
-            # Online exclusive variant (slightly cheaper)
+            # Online exclusive variant
             code = f"TRF-{n:04d}"
             products.append(
                 _p(
@@ -101,12 +104,14 @@ def seed_products(*, random_seed: int = 42) -> int:
                         "discount": True,
                         "eligible": {"requires_esim_or_courier_activation": True},
                         "source": "vodafone_tr_like",
+                        "description": "Online'a özel indirimli Red tarifesi. Yüksek veri ve premium ayrıcalıklar.",
+                        "keywords": ["online", "indirim", "fırsat", "red", "premium"]
                     },
                 )
             )
             n += 1
 
-        # Online Fırsat 2025 style
+        # Online Fırsat
         online_firsat = [
             ("Online Fırsat 2025 20 GB", 520),
             ("Online Fırsat 2025 30 GB", 620),
@@ -126,14 +131,15 @@ def seed_products(*, random_seed: int = 42) -> int:
                         "channel": "Online",
                         "contract_months": 12,
                         "perks": ["Online'a özel avantajlar"],
-                        "source": "vodafone_tr_like",
+                        "description": "İnternetten başvuranlara özel yüksek GB'lı avantajlı tarife.",
+                        "keywords": ["ekonomik", "bol internet", "fırsat", "dijital"]
                     },
                 )
             )
             n += 1
 
         # ------------------------------------------------------------
-        # 2) FreeZone / Genç tarifeler (isim örnekleri sayfada geçiyor) :contentReference[oaicite:2]{index=2}
+        # 2) FreeZone / Genç
         # ------------------------------------------------------------
         freezone_base = [
             ("Genç Bütçe Dostu 32GB Paketi", 399),
@@ -143,7 +149,6 @@ def seed_products(*, random_seed: int = 42) -> int:
             ("FreeZone 20GB", 319),
         ]
         for name, price in freezone_base:
-            # Store
             code = f"TRF-{n:04d}"
             products.append(
                 _p(
@@ -157,13 +162,15 @@ def seed_products(*, random_seed: int = 42) -> int:
                         "channel": "Store",
                         "contract_months": 12,
                         "perks": ["FreeZone ayrıcalıkları"],
-                        "source": "vodafone_tr_like",
+                        "description": "26 yaş altı gençler için bol internetli, oyun ve sosyal medya avantajlı tarife.",
+                        "keywords": ["genç", "öğrenci", "oyun", "sosyal medya", "ekonomik", "freezone"],
+                        "best_for_persona": "Genç / Öğrenci"
                     },
                 )
             )
             n += 1
 
-            # Online
+            # Online variant
             code = f"TRF-{n:04d}"
             products.append(
                 _p(
@@ -175,9 +182,9 @@ def seed_products(*, random_seed: int = 42) -> int:
                         "segment": "FreeZone",
                         "subscription_type": "Postpaid",
                         "channel": "Online",
-                        "contract_months": 12,
                         "discount": True,
-                        "source": "vodafone_tr_like",
+                        "description": "Gençlere özel online indirimli bol internet paketi.",
+                        "keywords": ["genç", "indirim", "online", "gamer"]
                     },
                 )
             )
@@ -205,19 +212,43 @@ def seed_products(*, random_seed: int = 42) -> int:
                     {
                         "segment": "Prepaid",
                         "subscription_type": "Prepaid",
-                        "channel": random.choice(["SMS", "Yanımda App", "USSD", "Store"]),
+                        "channel": "Yanımda App",
                         "validity": "Daily" if "Günlük" in name else "Weekly" if "Haftalık" in name else "Monthly",
-                        "source": "vodafone_tr_like",
+                        "description": "Taahhütsüz, yükle-kullan faturasız paket. Kısa süreli ihtiyaçlar veya bütçe kontrolü için.",
+                        "keywords": ["faturasız", "taahhütsüz", "kontörlü", "kolay paket", "pratik"]
                     },
                 )
             )
             n += 1
 
         # ------------------------------------------------------------
-        # 4) Pass / Add-on paketleri (Video/Sosyal/Müzik/Gaming) (demo)
+        # 4) Pass / Add-on (KRİTİK GÜNCELLEME: Video vs İletişim Ayrımı)
         # ------------------------------------------------------------
         passes = ["Gaming Pass", "Video Pass", "Sosyal Pass", "Müzik Pass", "İletişim Pass", "Red Pass"]
         for p in passes:
+            # Yapay Zeka için Açıklamalar
+            desc = ""
+            keys = []
+            
+            if "Video" in p:
+                desc = "YouTube, Netflix, Amazon Prime gibi uygulamalarda video İZLEMEK için sınırsız internet. Görüntülü konuşma (FaceTime/WhatsApp) için DEĞİLDİR."
+                keys = ["izleme", "dizi", "film", "youtube", "netflix", "eğlence", "video akış"]
+            elif "İletişim" in p:
+                desc = "WhatsApp, Messenger, FaceTime, Telegram gibi uygulamalarda mesajlaşma ve GÖRÜNTÜLÜ KONUŞMA için sınırsız internet. Sevdiklerinizle iletişim kurun."
+                keys = ["konuşma", "görüntülü", "whatsapp", "facetime", "iletişim", "aramak", "sesli"]
+            elif "Sosyal" in p:
+                desc = "Instagram, Facebook, Twitter (X) gibi sosyal medya uygulamaları için sınırsız internet."
+                keys = ["sosyal medya", "instagram", "twitter", "facebook", "gezinti", "paylaşım"]
+            elif "Gaming" in p:
+                desc = "PUBG, LoL, Mobile Legends gibi mobil oyunlar için kotadan yemeyen sınırsız internet. Düşük ping sağlar."
+                keys = ["oyun", "gamer", "pubg", "hız", "düşük ping", "rekabet"]
+            elif "Müzik" in p:
+                desc = "Spotify, Apple Music gibi platformlarda sınırsız müzik dinleme."
+                keys = ["müzik", "spotify", "şarkı", "podcast"]
+            else:
+                desc = "Popüler uygulamalarda geçerli sınırsız internet kullanımı."
+                keys = ["sınırsız", "pass", "ek paket"]
+
             # Unlimited monthly
             code = f"ADD-{n:04d}"
             products.append(
@@ -226,7 +257,14 @@ def seed_products(*, random_seed: int = 42) -> int:
                     f"Sınırsız {p}",
                     "Addon",
                     129,
-                    {"type": "Pass", "quota": "Unlimited", "validity": "Monthly", "channel": "Yanımda App"},
+                    {
+                        "type": "Pass",
+                        "quota": "Unlimited",
+                        "validity": "Monthly",
+                        "channel": "Yanımda App",
+                        "description": desc,
+                        "keywords": keys
+                    },
                 )
             )
             n += 1
@@ -239,7 +277,14 @@ def seed_products(*, random_seed: int = 42) -> int:
                     f"Günlük {p}",
                     "Addon",
                     29,
-                    {"type": "Pass", "quota": "Unlimited", "validity": "24 Hours", "channel": "Yanımda App"},
+                    {
+                        "type": "Pass",
+                        "quota": "Unlimited",
+                        "validity": "24 Hours",
+                        "channel": "Yanımda App",
+                        "description": f"24 saat boyunca geçerli. {desc}",
+                        "keywords": keys + ["günlük", "kısa süreli", "24 saat"]
+                    },
                 )
             )
             n += 1
@@ -253,13 +298,25 @@ def seed_products(*, random_seed: int = 42) -> int:
         ]
         for name, price in extras:
             code = f"ADD-{n:04d}"
+            desc = "Ekstra internet paketi."
+            keys = ["ek internet", "kota doldu", "internet lazım"]
+            
+            if "Güvenli" in name:
+                desc = "Zararlı içeriklerden ve dolandırıcılıktan koruyan güvenli internet servisi. Aileler ve yaşlılar için önerilir."
+                keys = ["güvenlik", "koruma", "aile", "çocuk", "dolandırıcılık önleme"]
+
             products.append(
-                _p(code, name, "Addon", price, {"type": "TopUp", "channel": random.choice(["SMS", "Yanımda App", "Web"])})
+                _p(code, name, "Addon", price, {
+                    "type": "TopUp", 
+                    "channel": "Yanımda App",
+                    "description": desc,
+                    "keywords": keys
+                })
             )
             n += 1
 
         # ------------------------------------------------------------
-        # 5) Ev interneti & RedBox (sayfalarda ürün isim kalıbı var) :contentReference[oaicite:3]{index=3}
+        # 5) Ev interneti & RedBox
         # ------------------------------------------------------------
         home = [
             ("Evde Fiber 200", 799),
@@ -281,39 +338,18 @@ def seed_products(*, random_seed: int = 42) -> int:
                         "includes": ["Modem", "Kurulum"],
                         "speed_mbps": int("".join([c for c in name if c.isdigit()]) or "0"),
                         "source": "vodafone_tr_like",
-                    },
-                )
-            )
-            n += 1
-
-        redbox = [
-            ("5G RedBox 200GB", 499),
-            ("5G RedBox 300GB", 599),
-            ("5G RedBox Sınırsız", 799),
-        ]
-        for name, price in redbox:
-            code = f"HOME-{n:04d}"
-            products.append(
-                _p(
-                    code,
-                    name,
-                    "HomeInternet",
-                    price,
-                    {
-                        "segment": "RedBox",
-                        "type": "WirelessHomeInternet",
-                        "contract_months": 12,
-                        "source": "vodafone_tr_like",
+                        "description": "Yüksek hızlı fiber ev interneti. Evden çalışanlar, oyuncular ve kalabalık aileler için.",
+                        "keywords": ["ev interneti", "fiber", "hız", "sınırsız", "wifi", "evden çalışma"]
                     },
                 )
             )
             n += 1
 
         # ------------------------------------------------------------
-        # 6) Roaming / Pasaport / Yurt Dışı paketleri (sayfada yer alıyor) :contentReference[oaicite:4]{index=4}
+        # 6) Roaming / Yurt Dışı
         # ------------------------------------------------------------
         roaming = [
-            ("Yurt Dışı 1GB Paketi", 199),  # sayfada fiyat güncellemesi bilgisi geçiyor :contentReference[oaicite:5]{index=5}
+            ("Yurt Dışı 1GB Paketi", 199),
             ("Pasaport Avrupa (Günlük)", 190),
             ("Pasaport Dünya (Günlük)", 230),
             ("Her Şey Dahil Pasaport", 299),
@@ -332,48 +368,44 @@ def seed_products(*, random_seed: int = 42) -> int:
                         "segment": "Roaming",
                         "validity": "Daily" if "Günlük" in name else "Weekly",
                         "eligible": {"requires_identity_verification": True},
-                        "source": "vodafone_tr_like",
+                        "description": "Yurt dışında kendi tarifenizi veya ek paketinizi kullanmanızı sağlayan roaming paketi.",
+                        "keywords": ["yurt dışı", "seyahat", "gezi", "roaming", "pasaport", "avrupa"]
                     },
                 )
             )
             n += 1
 
         # ------------------------------------------------------------
-        # 7) Cihazlar (faturaya ek ürün sayfaları var; isimleri gerçekçi) :contentReference[oaicite:6]{index=6}
+        # 7) Cihazlar (iPhone vb.)
         # ------------------------------------------------------------
         phones = [
-            "iPhone 15 Pro Max",
-            "iPhone 15 Pro",
-            "iPhone 15",
-            "iPhone 14",
-            "Samsung Galaxy S24 Ultra",
-            "Samsung Galaxy S24",
-            "Samsung Galaxy S24 FE",
-            "Samsung Galaxy A55",
-            "Xiaomi Redmi Note 13 Pro",
-            "Huawei Nova 11",
+            "iPhone 15 Pro Max", "iPhone 15 Pro", "iPhone 15", "iPhone 14",
+            "Samsung Galaxy S24 Ultra", "Samsung Galaxy S24", "Samsung Galaxy S24 FE",
+            "Samsung Galaxy A55", "Xiaomi Redmi Note 13 Pro", "Huawei Nova 11",
         ]
         storages = ["128GB", "256GB", "512GB"]
         for model in phones:
             for st in storages:
-                # Çok kaba demo fiyat (gerçek birebir olması şart değil)
                 base = 25000 if "A55" in model else 35000 if "Redmi" in model else 45000
-                if "S24 Ultra" in model:
-                    base = 70000
-                if "iPhone 15 Pro Max" in model:
-                    base = 85000
-                if "iPhone 15 Pro" in model:
-                    base = 75000
-                if "iPhone 15" in model:
-                    base = 58000
-                if "iPhone 14" in model:
-                    base = 45000
+                if "S24 Ultra" in model: base = 70000
+                if "iPhone 15 Pro Max" in model: base = 85000
+                if "iPhone 15 Pro" in model: base = 75000
+                if "iPhone 15" in model: base = 58000
+                if "iPhone 14" in model: base = 45000
 
                 add = 0
-                if st == "256GB":
-                    add = 4000
-                if st == "512GB":
-                    add = 9000
+                if st == "256GB": add = 4000
+                if st == "512GB": add = 9000
+
+                # AI için açıklama üretimi
+                desc = "Akıllı telefon."
+                keys = ["telefon", "cihaz"]
+                if "Pro" in model or "Ultra" in model:
+                    desc = "En son teknolojiye sahip, yüksek performanslı ve prestijli akıllı telefon. Profesyonel kamera ve yüksek hız arayanlar için."
+                    keys = ["lüks", "prestij", "fotoğraf", "kamera", "teknoloji", "yüksek performans", "yeni"]
+                elif "A55" in model or "Redmi" in model or "FE" in model:
+                    desc = "Fiyat/performans oranı yüksek, modern akıllı telefon. Günlük kullanım ve bütçe dostu yenileme için ideal."
+                    keys = ["fiyat performans", "ekonomik", "yeni telefon", "android", "öğrenci"]
 
                 code = f"DEV-{n:04d}"
                 products.append(
@@ -387,17 +419,16 @@ def seed_products(*, random_seed: int = 42) -> int:
                             "storage": st,
                             "payment": "Faturaya Ek",
                             "installments": 12,
-                            "eligible": {
-                                "requires_no_overdue_bill": True,
-                                "requires_no_recent_sim_change_48h": True,
-                            },
-                            "source": "vodafone_tr_like",
+                            "eligible": {"requires_no_overdue_bill": True},
+                            "description": desc,
+                            "keywords": keys,
+                            "best_for_persona": "Teknoloji Meraklısı" if "Pro" in model else "Genel"
                         },
                     )
                 )
                 n += 1
 
-        # Accessories / wearables (demo)
+        # Accessories
         accessories = [
             ("Apple Watch Series 9", 17000, "Apple"),
             ("AirPods Pro (2. Nesil)", 9000, "Apple"),
@@ -408,11 +439,17 @@ def seed_products(*, random_seed: int = 42) -> int:
         ]
         for name, price, brand in accessories:
             code = f"ACC-{n:04d}"
-            products.append(_p(code, name, "Accessory", price, {"brand": brand, "payment": "Faturaya Ek", "installments": 12}))
+            products.append(_p(code, name, "Accessory", price, {
+                "brand": brand, 
+                "payment": "Faturaya Ek", 
+                "installments": 12,
+                "description": "Teknolojik aksesuar ve giyilebilir teknoloji ürünü.",
+                "keywords": ["aksesuar", "kulaklık", "saat", "akıllı saat", "hoparlör", "hediye"]
+            }))
             n += 1
 
         # ------------------------------------------------------------
-        # 8) Dijital servisler / finans / güvenlik (demo)
+        # 8) Dijital servisler / Finans
         # ------------------------------------------------------------
         services = [
             ("Vodafone Pay Kart", 20, "Finance"),
@@ -424,17 +461,20 @@ def seed_products(*, random_seed: int = 42) -> int:
         ]
         for name, price, cat in services:
             code = f"MSC-{n:04d}"
-            products.append(_p(code, name, cat, price, {"type": cat, "channel": "Yanımda App"}))
+            products.append(_p(code, name, cat, price, {
+                "type": cat, 
+                "channel": "Yanımda App",
+                "description": "Dijital katma değerli servis.",
+                "keywords": ["servis", "dijital", "finans", "iş"]
+            }))
             n += 1
 
-        # Ensure we are at least 100+
-        # If still below 100 due to list size changes, create extra realistic variants
+        # Fill up to 120
         while len(products) < 120:
-            # Create tariff variants: quota & online
             gb = random.choice([5, 10, 15, 20, 30, 40, 60])
             seg = random.choice(["Red", "FreeZone", "Uyumlu"])
             ch = random.choice(["Store", "Online"])
-            price = 199 + gb * 10 + (80 if seg == "Red" else 0) - (30 if ch == "Online" else 0)
+            price = 199 + gb * 10
             code = f"TRF-{n:04d}"
             products.append(
                 _p(
@@ -446,9 +486,9 @@ def seed_products(*, random_seed: int = 42) -> int:
                         "segment": seg,
                         "subscription_type": "Postpaid",
                         "channel": ch,
-                        "contract_months": 12,
                         "quota_gb": gb,
-                        "source": "vodafone_tr_like_generated",
+                        "description": f"{seg} dünyasından bol internetli tarife.",
+                        "keywords": ["tarife", "internet", seg.lower()]
                     },
                 )
             )
