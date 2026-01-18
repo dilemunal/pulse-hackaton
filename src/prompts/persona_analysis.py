@@ -1,13 +1,11 @@
-# DOSYA: src/prompts/persona_analysis.py
 """
-Persona analysis prompt builder (Pulse demo).
+Persona analysis prompt builder
 
 What this module does:
 - Defines the SYSTEM prompt (stable behavioral contract)
 - Defines the USER prompt template (how we feed customer features)
 - Enforces: output must be a deterministic JSON object
 
-AI concept note:
 - Prompt template = reusable contract.
 - Output schema = deterministic JSON so DB updates don't depend on free-form text.
 
@@ -22,10 +20,9 @@ import json
 from typing import Any, Dict, List
 
 
-# ----------------------------
+
 # Output schema (inline, demo)
-# ----------------------------
-# Later you can move this into: config/schemas/persona_result.schema.json
+
 PERSONA_OUTPUT_SCHEMA_HINT: Dict[str, Any] = {
     "results": [
         {
@@ -41,8 +38,6 @@ PERSONA_OUTPUT_SCHEMA_HINT: Dict[str, Any] = {
     ]
 }
 
-
-# DOSYA: src/prompts/persona_analysis.py
 
 def build_persona_system_prompt() -> str:
     """
@@ -93,9 +88,9 @@ SADECE JSON döndür. En üstte { "results": [...] } objesi olmalı.
 """.strip()
 
 
-# ----------------------------
+
 # User prompt
-# ----------------------------
+
 def build_persona_user_prompt(customers: List[Dict[str, Any]]) -> str:
     """
     customers: list of dicts.

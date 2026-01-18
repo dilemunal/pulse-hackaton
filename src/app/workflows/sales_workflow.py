@@ -1,15 +1,13 @@
-# DOSYA: src/app/workflows/sales_workflow.py
 """
 Sales Workflow (Pulse demo) — "Brain" of the system
 
-Core idea (what jury should understand):
 - Pulse'un asıl farkı: GÜNDEM (World Context) + müşteri bağlamı + ürün kataloğu bilgisi.
 - Sales workflow, bir "pazarlamacı/satışçı" gibi davranır:
-  - O anki gündemdeki somut haber başlıklarını kullanır (uydurmaz)
+  - O anki gündemdeki somut haber başlıklarını kullanır
   - Müşterinin profilini/ilgisini/geçmişini kullanır
   - Ürün kataloğundan (RAG) en mantıklı ürünü seçer
   - Türkçe, samimi ve kişisel bir mesaj üretir
-  - Neden bu kararı verdiğini yazılı (structured) şekilde kaydeder
+  - Neden bu kararı verdiğini yazılı  şekilde kaydeder
 
 Data sources:
 1) World Context: data/cache/intelligence.json (Trend Job çıktısı)
@@ -36,9 +34,8 @@ from src.adapters.embeddings import EmbeddingsClient
 from src.adapters.vector_store import VectorStore
 
 
-# -----------------------------
-# DB: Setup table
-# -----------------------------
+
+# DB: Setup 
 def setup_sales_table() -> None:
     with db_cursor() as (conn, cur):
         cur.execute("DROP TABLE IF EXISTS sales_opportunities;")
@@ -61,26 +58,21 @@ def setup_sales_table() -> None:
         conn.commit()
 
 
-# -----------------------------
+
 # World context loader
-# -----------------------------
+
 def _safe_list(x: Any) -> List[Any]:
     return x if isinstance(x, list) else []
 
-
-# DOSYA: src/app/workflows/sales_workflow.py
-# (Sadece load_world_context fonksiyonunu bununla tamamen değiştirin)
 
 def load_world_context(path: str = "data/cache/intelligence.json") -> Dict[str, Any]:
     print(f"\n🔴 [DEBUG BAŞLADI] Hedef Dosya: {path}")
     print(f"🔴 [DEBUG] Tam Yol: {os.path.abspath(path)}")
 
-    # 1. Dosya Fiziksel Olarak Var mı?
     if not os.path.exists(path):
         print("❌ [HATA] Dosya sistemde YOK! Trend Job çalıştı mı?")
         return {"context_summary": "Veri Yok", "news_titles": [], "signals": []}
     
-    # 2. JSON Olarak Okunabiliyor mu?
     try:
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
@@ -90,7 +82,6 @@ def load_world_context(path: str = "data/cache/intelligence.json") -> Dict[str, 
         print(f"❌ [HATA] JSON parse hatası: {e}")
         return {"context_summary": "Veri Bozuk", "news_titles": [], "signals": []}
 
-    # 3. 'intelligence' Anahtarı Var mı?
     intel = data.get("intelligence")
     if not intel:
         print("❌ [HATA] JSON içinde 'intelligence' anahtarı EKSİK veya BOŞ!")
@@ -98,7 +89,7 @@ def load_world_context(path: str = "data/cache/intelligence.json") -> Dict[str, 
     
     print(f"🔍 [DEBUG] 'intelligence' Anahtarları: {list(intel.keys())}")
 
-    # 4. 'marketable_signals' Listesi Var mı?
+
     signals = intel.get("marketable_signals")
     if signals is None:
         print("❌ [HATA] 'marketable_signals' anahtarı hiyerarşide YOK!")
@@ -110,23 +101,21 @@ def load_world_context(path: str = "data/cache/intelligence.json") -> Dict[str, 
     else:
         print(f"❌ [HATA] 'marketable_signals' bir liste değil! Tipi: {type(signals)}")
 
-    # 5. Veriyi Topla (Fallback YOK, Sadece Gerçek Veri)
+
     news_titles = []
-    
-    # Sinyallerden başlıkları al
+
     if isinstance(signals, list):
         for s in signals:
             if isinstance(s, dict) and s.get("title"):
                 news_titles.append(str(s["title"]).strip())
     
-    # Eğer sinyaller boşsa 'raw_inputs' kontrol et (debug amaçlı)
+   
     if not news_titles:
-        print("⚠️ [UYARI] Sinyallerden başlık çıkmadı. Raw Inputs kontrol ediliyor...")
+        print("[UYARI] Sinyallerden başlık çıkmadı. Raw Inputs kontrol ediliyor...")
         raw_news = data.get("raw_inputs", {}).get("news", [])
         if raw_news:
-            print(f"ℹ️ [BİLGİ] Raw Inputs içinde {len(raw_news)} haber bulundu.")
-            # İsterseniz burayı açabilirsiniz ama şimdilik sadece debug ediyoruz.
-            # news_titles = [str(x) for x in raw_news]
+            print(f"[BİLGİ] Raw Inputs içinde {len(raw_news)} haber bulundu.")
+     
 
     print(f"🏁 [SONUÇ] Sales Workflow'a giden toplam başlık sayısı: {len(news_titles)}")
 
@@ -137,9 +126,8 @@ def load_world_context(path: str = "data/cache/intelligence.json") -> Dict[str, 
     }
 
 
-# -----------------------------
-# Customer 360 (minimal demo)
-# -----------------------------
+
+# Customer 360 
 def fetch_customer_batch(*, limit: int, offset: int) -> List[Dict[str, Any]]:
     with db_cursor() as (_conn, cur):
         cur.execute(
@@ -230,9 +218,9 @@ def fetch_customer_batch(*, limit: int, offset: int) -> List[Dict[str, Any]]:
     return batch
 
 
-# -----------------------------
+
 # Product retrieval (RAG candidates)
-# -----------------------------
+
 def _product_name_from_doc(doc: str) -> str:
     first = (doc.splitlines()[0] if doc else "").strip()
     if first.startswith("product_name:"):
@@ -285,9 +273,9 @@ def retrieve_product_candidates(
     return out
 
 
-# -----------------------------
-# AŞAMA 1: STRATEJİST AI (KARAR VERİCİ)
-# -----------------------------
+
+# AŞAMA 1: STRATEJİST AI 
+
 async def decide_sales_strategy(
     llm: AsyncOpenAI,
     *,
@@ -375,9 +363,9 @@ async def decide_sales_strategy(
         }
 
 
-# -----------------------------
-# AŞAMA 2: SALES BRAIN (UYGULAYICI)
-# -----------------------------
+
+# AŞAMA 2: SALES BRAIN 
+
 def build_sales_brain_system_prompt() -> str:
     return """
 Sen Pulse sistemindeki "Satış & Pazarlama Beyni"sin. Stratejistin belirlediği yoldan ilerleyerek son vuruşu yapacaksın.
@@ -467,9 +455,9 @@ def _safe_str(x: Any, max_len: int) -> str:
     return s[:max_len]
 
 
-# -----------------------------
+
 # DB: Save results
-# -----------------------------
+
 def save_opportunities(rows: List[Tuple]) -> None:
     if not rows:
         return
@@ -494,9 +482,8 @@ def save_opportunities(rows: List[Tuple]) -> None:
         conn.commit()
 
 
-# -----------------------------
 # Orchestrator
-# -----------------------------
+
 async def run_sales_workflow(*, batch_size: int = 10, max_total: Optional[int] = 30) -> int:
     setup_sales_table()
     world = load_world_context()
@@ -537,14 +524,14 @@ async def run_sales_workflow(*, batch_size: int = 10, max_total: Optional[int] =
                 if not ai_search_query:
                     ai_search_query = f"{cust.get('tariff_segment')} paket"
 
-                # --- 2. RAG: AI Sorgusu ile Ürün Bul ---
+     
                 candidates = retrieve_product_candidates(
                     query_text=ai_search_query,
                     k=6,
                 )
 
                 # --- 3. SALES BRAIN: Metni Yaz ---
-                # Brain'in kafasını karıştırmamak için sadece seçilen haberi gönderiyoruz
+
                 focused_world = world.copy()
                 if selected_news and selected_news != "YOK":
                     focused_world["selected_news"] = selected_news
@@ -567,7 +554,7 @@ async def run_sales_workflow(*, batch_size: int = 10, max_total: Optional[int] =
                 if not suggested_product and chosen:
                     suggested_product = _safe_str(chosen.get("product_name"), 200)
 
-                # Final Reasoning: Stratejistin gerekçesini de ekle
+      
                 ai_reasoning_obj = decision.get("ai_reasoning")
                 if not isinstance(ai_reasoning_obj, dict):
                     ai_reasoning_obj = {}

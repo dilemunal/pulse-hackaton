@@ -1,14 +1,14 @@
-# DOSYA: src/adapters/llm.py
+
 """
 LLM adapter for Pulse (demo).
 
 Purpose:
-- Provide a single, consistent way to call Vodafone/Practicus Model Gateway via OpenAI SDK.
+- Provide a single, consistent way to callPracticus Model Gateway.
 - Enforce prompt hygiene (system vs user), structured outputs (JSON), and basic guardrails.
 
 AI concept notes:
 - "System prompt" = global behavioral contract (tone, constraints, safety).
-- "Structured output" = force JSON so downstream logic is deterministic (no regex parsing).
+- "Structured output" = force JSON so downstream logic is deterministic .
 - "Gateway" = single endpoint; model selection is done via the `model` parameter.
 """
 
@@ -26,9 +26,6 @@ from config.settings import SETTINGS
 from src.adapters.http_client import build_async_httpx_client
 
 
-# ----------------------------
-# Message helpers
-# ----------------------------
 
 def system_message(content: str) -> ChatCompletionMessageParam:
     return {"role": "system", "content": content}
@@ -39,22 +36,14 @@ def user_message(content: str) -> ChatCompletionMessageParam:
 
 
 def developer_message(content: str) -> ChatCompletionMessageParam:
-    """
-    OpenAI API supports 'developer' role for some models/runtimes.
-    Your gateway may accept it; if not, we can fallback to 'system'.
 
-    For maximum compatibility with the on-prem gateway, we keep this helper
-    but default to system in most flows unless you explicitly want developer.
-    """
     return {"role": "developer", "content": content}
 
 
-# ----------------------------
+
 # Client factory
-# ----------------------------
 
 def _gateway_metadata() -> Dict[str, Any]:
-    # Never put these into prompts; only send as request metadata.
     return {"metadata": {"username": SETTINGS.username, "pwd": SETTINGS.pwd}}
 
 
@@ -69,9 +58,7 @@ class LlmResult:
 
 
 class LlmClient:
-    """
-    Thin wrapper around AsyncOpenAI for the Pulse demo.
-    """
+
 
     def __init__(self) -> None:
         self._http_client = build_async_httpx_client(timeout_s=120.0)
@@ -103,7 +90,7 @@ class LlmClient:
         chat_model = model or SETTINGS.LLM_CHAT_MODEL
         extra_body = _gateway_metadata()
         if extra:
-            # allow callers to add non-sensitive extra fields
+          
             extra_body.update(extra)
 
         resp: ChatCompletion = await self._client.chat.completions.create(
@@ -119,11 +106,11 @@ class LlmClient:
         try:
             parsed = json.loads(content)
         except json.JSONDecodeError:
-            # In a demo, fail fast with a helpful payload:
+         
             parsed = {"_parse_error": True, "raw": content}
 
         usage = None
-        # Usage fields may vary by gateway; keep best-effort.
+   
         if getattr(resp, "usage", None):
             usage = {
                 "prompt_tokens": getattr(resp.usage, "prompt_tokens", None),
@@ -142,9 +129,7 @@ class LlmClient:
         max_tokens: Optional[int] = None,
         extra: Optional[Dict[str, Any]] = None,
     ) -> str:
-        """
-        Plain text completion (rarely needed; prefer chat_json for deterministic pipelines).
-        """
+    
         chat_model = model or SETTINGS.LLM_CHAT_MODEL
         extra_body = _gateway_metadata()
         if extra:

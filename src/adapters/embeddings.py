@@ -2,8 +2,8 @@
 Embeddings adapter for Pulse (demo).
 
 Purpose:
-- Provide a single, consistent embeddings interface via Vodafone/Practicus Model Gateway.
-- Hide OpenAI SDK + httpx details from the rest of the codebase.
+- Provide a single, consistent embeddings interface via Practicus Model Gateway.
+- Hide OpenAI + httpx details from the rest of the codebase.
 - Keep embedding calls deterministic and easy to batch.
 """
 
@@ -19,9 +19,7 @@ from config.settings import SETTINGS
 from src.adapters.http_client import build_sync_httpx_client
 
 
-# =========================================================
-# Core embedding client (OpenAI / Practicus)
-# =========================================================
+# Core embedding client (Practicus)
 
 @dataclass(frozen=True)
 class EmbeddingResult:
@@ -30,9 +28,6 @@ class EmbeddingResult:
 
 
 class EmbeddingsClient:
-    """
-    Sync embeddings client (OpenAI SDK).
-    """
 
     def __init__(self) -> None:
         self._http_client: httpx.Client = build_sync_httpx_client(timeout_s=60.0)
@@ -71,9 +66,7 @@ class EmbeddingsClient:
 
 
 def embed_texts(texts: List[str], *, model: Optional[str] = None) -> List[List[float]]:
-    """
-    Convenience helper.
-    """
+
     client = EmbeddingsClient()
     try:
         return client.embed_texts(texts, model=model).vectors
@@ -81,17 +74,13 @@ def embed_texts(texts: List[str], *, model: Optional[str] = None) -> List[List[f
         client.close()
 
 
-# =========================================================
-# Chroma compatibility layer (THIS FIXES YOUR ERROR)
-# =========================================================
+# Chroma compatibility layer 
 
 from chromadb import Documents, EmbeddingFunction, Embeddings  # type: ignore
 
 
 class ChromaVodafoneEmbeddingFunction(EmbeddingFunction):
-    """
-    Chroma-compatible embedding function.
-    """
+
 
     def __init__(self, *, model: Optional[str] = None) -> None:
         self._model = model
@@ -107,5 +96,5 @@ class ChromaVodafoneEmbeddingFunction(EmbeddingFunction):
         return "pulse_practicus_gateway_embeddings"
 
 
-# Backward compatibility (scripts eski ismi kullanıyorsa)
+# Backward compatibility
 VodafoneEmbeddingFunction = ChromaVodafoneEmbeddingFunction

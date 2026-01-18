@@ -1,6 +1,5 @@
-# DOSYA: scripts/seed_behavior.py
 """
-Seed customer_behavior (JSONB) table (Pulse demo).
+Seed customer_behavior table (Pulse demo).
 
 Creates:
 - customer_behavior table
@@ -48,7 +47,7 @@ def seed_behavior(*, random_seed: int = 42) -> int:
         rows: List[Tuple[int, str]] = []
 
         for cid, segment, sub_type, age, arpu in customers:
-            # Data quota baseline
+       
             if segment == "Red" or "FreeZone" in str(segment):
                 total_data = random.randint(20, 60)
             else:
@@ -60,7 +59,7 @@ def seed_behavior(*, random_seed: int = 42) -> int:
             total_min = random.choice([500, 750, 1000, 2000])
             remaining_min = random.randint(0, total_min)
 
-            # Billing / balance
+   
             if sub_type == "Postpaid":
                 current_bill = round(float(arpu) * random.uniform(0.9, 1.2), 2)
                 days_left = random.randint(1, 30)
@@ -106,7 +105,7 @@ def seed_behavior(*, random_seed: int = 42) -> int:
             else:
                 digital_footprint["most_visited_page"] = "Invoice Summary" if sub_type == "Postpaid" else "Balance Check"
 
-            # Intent
+       
             current_intent = "General Browsing"
             if remaining_data / total_data * 100 < 10 if total_data else False:
                 current_intent = "Urgent Data Need"

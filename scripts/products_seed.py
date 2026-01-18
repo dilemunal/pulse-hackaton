@@ -1,11 +1,8 @@
-# DOSYA: scripts/products_seed.py
 """
-Seed ~120 realistic Vodafone TR-like products into Postgres for Pulse (demo).
-(GELİŞTİRİLMİŞ VERSİYON - AI DOSTU AÇIKLAMALAR İLE)
+Seed ~120 realistic Vodafone TR-like products into Postgres for Pulse
 
-Değişiklikler:
 - Ürünlere 'description' ve 'keywords' eklendi.
-- Video Pass ile İletişim Pass arasındaki fark yapay zekaya öğretildi.
+- Video Pass ile İletişim Pass arasındaki vb.. fark yapay zekaya öğretildi.
 - Red tarifelerine ve cihazlara persona ipuçları eklendi.
 """
 
@@ -13,7 +10,6 @@ from __future__ import annotations
 import os
 import sys
 
-# Allow running this file directly: `python3 scripts/products_seed.py`
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
@@ -32,7 +28,6 @@ def seed_products(*, random_seed: int = 42) -> int:
     random.seed(random_seed)
 
     with db_cursor() as (_conn, cur):
-        # Recreate table (demo)
         cur.execute("DROP TABLE IF EXISTS products CASCADE;")
         cur.execute(
             """
@@ -52,9 +47,8 @@ def seed_products(*, random_seed: int = 42) -> int:
         products: List[Tuple[str, str, str, float, str]] = []
         n = 1
 
-        # ------------------------------------------------------------
         # 1) Faturalı Tarifeler (Red, Online Fırsat, vb.)
-        # ------------------------------------------------------------
+
         red_core = [
             ("Red 20GB", 520),
             ("Red 30GB", 620),
@@ -64,7 +58,7 @@ def seed_products(*, random_seed: int = 42) -> int:
             ("Red Elite Sınırsız", 1190),
         ]
         for base_name, base_price in red_core:
-            # Store version
+         
             code = f"TRF-{n:04d}"
             products.append(
                 _p(
@@ -79,7 +73,6 @@ def seed_products(*, random_seed: int = 42) -> int:
                         "contract_months": 12,
                         "eligible": {"requires_no_overdue_bill": True},
                         "source": "vodafone_tr_like",
-                        # AI İÇİN EKLENEN KISIM:
                         "description": "Bol internetli, yurt dışında da geçerli, her şey dahil premium tarife. Seyahat edenler ve iş insanları için ideal.",
                         "keywords": ["seyahat", "yurt dışı", "premium", "iş", "konfor", "sınırsız", "roaming"],
                         "best_for_persona": "Gezgin / İş İnsanı"
@@ -88,7 +81,7 @@ def seed_products(*, random_seed: int = 42) -> int:
             )
             n += 1
 
-            # Online exclusive variant
+         
             code = f"TRF-{n:04d}"
             products.append(
                 _p(
@@ -111,7 +104,7 @@ def seed_products(*, random_seed: int = 42) -> int:
             )
             n += 1
 
-        # Online Fırsat
+ 
         online_firsat = [
             ("Online Fırsat 2025 20 GB", 520),
             ("Online Fırsat 2025 30 GB", 620),
@@ -138,9 +131,9 @@ def seed_products(*, random_seed: int = 42) -> int:
             )
             n += 1
 
-        # ------------------------------------------------------------
+       
         # 2) FreeZone / Genç
-        # ------------------------------------------------------------
+    
         freezone_base = [
             ("Genç Bütçe Dostu 32GB Paketi", 399),
             ("Genç Bütçe Dostu 40GB Paketi", 449),
@@ -170,7 +163,7 @@ def seed_products(*, random_seed: int = 42) -> int:
             )
             n += 1
 
-            # Online variant
+          
             code = f"TRF-{n:04d}"
             products.append(
                 _p(
@@ -190,9 +183,9 @@ def seed_products(*, random_seed: int = 42) -> int:
             )
             n += 1
 
-        # ------------------------------------------------------------
+     
         # 3) Faturasız / Kolay Paket
-        # ------------------------------------------------------------
+   
         prepaid = [
             ("Kolay Paket 10GB", 250),
             ("Kolay Paket 20GB", 320),
@@ -221,9 +214,9 @@ def seed_products(*, random_seed: int = 42) -> int:
             )
             n += 1
 
-        # ------------------------------------------------------------
+      
         # 4) Pass / Add-on (KRİTİK GÜNCELLEME: Video vs İletişim Ayrımı)
-        # ------------------------------------------------------------
+   
         passes = ["Gaming Pass", "Video Pass", "Sosyal Pass", "Müzik Pass", "İletişim Pass", "Red Pass"]
         for p in passes:
             # Yapay Zeka için Açıklamalar
@@ -249,7 +242,7 @@ def seed_products(*, random_seed: int = 42) -> int:
                 desc = "Popüler uygulamalarda geçerli sınırsız internet kullanımı."
                 keys = ["sınırsız", "pass", "ek paket"]
 
-            # Unlimited monthly
+      
             code = f"ADD-{n:04d}"
             products.append(
                 _p(
@@ -269,7 +262,7 @@ def seed_products(*, random_seed: int = 42) -> int:
             )
             n += 1
 
-            # Daily
+       
             code = f"ADD-{n:04d}"
             products.append(
                 _p(
@@ -315,9 +308,9 @@ def seed_products(*, random_seed: int = 42) -> int:
             )
             n += 1
 
-        # ------------------------------------------------------------
+   
         # 5) Ev interneti & RedBox
-        # ------------------------------------------------------------
+  
         home = [
             ("Evde Fiber 200", 799),
             ("Evde Fiber 1000", 1149),
@@ -345,9 +338,9 @@ def seed_products(*, random_seed: int = 42) -> int:
             )
             n += 1
 
-        # ------------------------------------------------------------
+ 
         # 6) Roaming / Yurt Dışı
-        # ------------------------------------------------------------
+
         roaming = [
             ("Yurt Dışı 1GB Paketi", 199),
             ("Pasaport Avrupa (Günlük)", 190),
@@ -375,9 +368,9 @@ def seed_products(*, random_seed: int = 42) -> int:
             )
             n += 1
 
-        # ------------------------------------------------------------
+
         # 7) Cihazlar (iPhone vb.)
-        # ------------------------------------------------------------
+
         phones = [
             "iPhone 15 Pro Max", "iPhone 15 Pro", "iPhone 15", "iPhone 14",
             "Samsung Galaxy S24 Ultra", "Samsung Galaxy S24", "Samsung Galaxy S24 FE",
@@ -397,7 +390,7 @@ def seed_products(*, random_seed: int = 42) -> int:
                 if st == "256GB": add = 4000
                 if st == "512GB": add = 9000
 
-                # AI için açıklama üretimi
+    
                 desc = "Akıllı telefon."
                 keys = ["telefon", "cihaz"]
                 if "Pro" in model or "Ultra" in model:
@@ -428,7 +421,7 @@ def seed_products(*, random_seed: int = 42) -> int:
                 )
                 n += 1
 
-        # Accessories
+
         accessories = [
             ("Apple Watch Series 9", 17000, "Apple"),
             ("AirPods Pro (2. Nesil)", 9000, "Apple"),
@@ -448,9 +441,9 @@ def seed_products(*, random_seed: int = 42) -> int:
             }))
             n += 1
 
-        # ------------------------------------------------------------
+ 
         # 8) Dijital servisler / Finans
-        # ------------------------------------------------------------
+
         services = [
             ("Vodafone Pay Kart", 20, "Finance"),
             ("Mobil Ödeme", 0, "Finance"),
@@ -469,7 +462,7 @@ def seed_products(*, random_seed: int = 42) -> int:
             }))
             n += 1
 
-        # Fill up to 120
+
         while len(products) < 120:
             gb = random.choice([5, 10, 15, 20, 30, 40, 60])
             seg = random.choice(["Red", "FreeZone", "Uyumlu"])
@@ -494,7 +487,7 @@ def seed_products(*, random_seed: int = 42) -> int:
             )
             n += 1
 
-        # Insert
+
         cur.executemany(
             "INSERT INTO products (product_code, name, category, price, specifications) VALUES (%s, %s, %s, %s, %s)",
             products,

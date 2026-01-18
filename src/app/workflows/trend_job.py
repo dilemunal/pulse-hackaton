@@ -1,23 +1,17 @@
-# DOSYA: src/app/workflows/trend_job.py
-"""
-Trend Job Workflow (Pulse demo) — World Context pipeline
 
+"""
 What it does:
 - Pulls public signals: RSS (title+summary+published+source), Google Trends, TR official holidays, Istanbul weather
 - Cleans/dedups items
 - Uses LLM to curate "marketable signals" based on REAL headlines:
-    - description: "Haberin ana fikri (1 cümle) - HALÜSİNASYON YOK"
+    - description: "Haberin ana fikri (1 cümle)"
     - marketing_hook: "Segment + Senaryo + İhtiyaç (markasız, iddiasız)"
 - Deterministic gates:
     - Brand-safety (src/domain/safety.py)
     - Relevancy (telco individual marketing usefulness)
-    - ECONOMY signals are dropped (per requirement)
+    - ECONOMY signals are dropped
 - Adds deterministic agenda cards (school breaks, holidays, weather, Spotify TR top)
 - Saves cache JSON to: data/cache/intelligence.json
-
-Design notes:
-- Output SHOULD NOT contain Vodafone/product/partner/free claims.
-- It CAN keep: game titles, device names, movie/series names, teams etc. (world context).
 """
 
 from __future__ import annotations
@@ -42,64 +36,45 @@ from pytrends.request import TrendReq
 from config.settings import SETTINGS
 from src.adapters.http_client import build_async_httpx_client
 
-# deterministic guardrail
 from src.domain.safety import filter_texts
 
-# ----------------------------
-# Config
-# ----------------------------
 
 logger.add("data/logs/trend_job.log", rotation="1 day")
 
 RSS_URLS: List[str] = [
-    # 🏢 CİDDİ / HABER / EKONOMİ
+  # Only open/public feeds
     "https://www.trthaber.com/sondakika.rss",
     "https://www.bloomberght.com/rss",
     "https://www.ntv.com.tr/ekonomi.rss",
-    # 🎮 OYUN / TECH / GEEK
     "https://tr.ign.com/feed.xml",
     "https://www.webtekno.com/rss.xml",
     "https://shiftdelete.net/feed",
     "https://www.merlininkazani.com/rss",
-    # 🔥 SOKAK / VİRAL / MAGAZİN
     "https://onedio.com/support/rss.xml",
     "https://www.hurriyet.com.tr/rss/magazin",
     "https://www.medyatava.com/rss",
-    # 🎵 MÜZİK / KÜLTÜR
     "https://www.kralmuzik.com.tr/rss",
     "https://www.ntv.com.tr/sanat.rss",
-    # ⚽ SPOR
     "https://www.fanatik.com.tr/rss/futbol",
-    # 🚗 OTOMOBİL / YAŞAM / SAĞLIK
     "https://tr.motor1.com/rss/articles/all/",
     "https://www.ntv.com.tr/saglik.rss",
-    # 🎬 SİNEMA / DİZİ
     "https://www.beyazperde.com/rss/haberler/",
-    # 📱 MOBİL / UYGULAMA
     "https://www.mobilizm.com/feed/",
-    # 💼 STARTUP / İŞ
     "https://webrazzi.com/feed/",
-    # 🎓 EĞİTİM / ÖĞRETİM
     "https://www.egitime.com/rss.xml",
-    # 🎪 YENİ ÜRÜN / LANSMAN
     "https://www.producthunt.com/feed/rss",
-    # 🐦 X / TWITTER TREND & GÜNDEM
     "https://rsshub.app/twitter/trends",
     "https://rsshub.app/twitter/trends/tr",
     "https://www.trendsmap.com/rss",
-    # 🎧 SPOTIFY / MÜZİK TREND
     "https://spotifycharts.com/regional/tr/daily/latest/rss",
     "https://spotifycharts.com/regional/global/daily/latest/rss",
     "https://spotifycharts.com/viral/tr/daily/latest/rss",
     "https://spotifycharts.com/viral/global/daily/latest/rss",
-    # 🎬 Beyazperde alt feedler
     "https://www.beyazperde.com/rss/filmler/",
     "https://www.beyazperde.com/rss/diziler/",
-    # 🎥 TIKTOK TREND (DOLAYLI)
     "https://www.dexerto.com/feed/",
     "https://www.hitc.com/en-gb/rss/",
     "https://www.socialmediatoday.com/rss/",
-    # 🎮 STREAMER & GAMING
     "https://www.dexerto.com/gaming/feed/",
     "https://www.twitch.tv/p/en/feed/",
     "https://www.gamesindustry.biz/rss",
@@ -111,14 +86,13 @@ CACHE_PATH = "data/cache/intelligence.json"
 MAX_ITEMS_TOTAL = 80
 MAX_PER_FEED = 6
 
-# LLM load control (content-only, not http/proxy)
-MAX_LLM_ITEMS = 24  # 30 bile bazen ağır; 24 güvenli
+
+MAX_LLM_ITEMS = 24 
 LLM_SIGNAL_COUNT_MIN = 8
 LLM_SIGNAL_COUNT_MAX = 12
 
-# ----------------------------
-# Helpers: text cleaning
-# ----------------------------
+
+# text cleaning
 
 def _strip_html(text: str) -> str:
     t = text or ""
@@ -148,9 +122,8 @@ def _norm_text(s: str) -> str:
     s = re.sub(r"\s+", " ", s)
     return s
 
-# ----------------------------
-# 1) Calendar signals
-# ----------------------------
+
+# Calendar signals
 
 def get_official_holidays(days_ahead: int = 60) -> List[str]:
     """Resmi tatiller (holidays.TR sadece resmi tatilleri verir)."""
@@ -195,9 +168,8 @@ def get_weekend_hint(days_ahead: int = 10) -> Optional[str]:
             return f"{d.isoformat()}: Hafta sonu başlıyor (Cumartesi)"
     return None
 
-# ----------------------------
+
 # 2) Weather (Istanbul via Open-Meteo)
-# ----------------------------
 
 async def fetch_weather_insight(http_client: httpx.AsyncClient) -> str:
     try:
@@ -219,9 +191,7 @@ async def fetch_weather_insight(http_client: httpx.AsyncClient) -> str:
     except Exception:
         return "Bilinmiyor"
 
-# ----------------------------
-# 3) Google Trends (TR)
-# ----------------------------
+# 3) Google Trends (TR)-
 
 async def fetch_google_trends() -> List[str]:
     def _run() -> List[str]:
@@ -232,9 +202,8 @@ async def fetch_google_trends() -> List[str]:
             return []
     return await asyncio.to_thread(_run)
 
-# ----------------------------
+
 # 4) RSS — rich items
-# ----------------------------
 
 def _guess_source(url: str) -> str:
     try:
@@ -250,7 +219,7 @@ def _entry_to_item(entry: Any, *, feed_url: str) -> Optional[Dict[str, Any]]:
         return None
 
     summary = getattr(entry, "summary", None) or getattr(entry, "description", None) or ""
-    # Keep short summary in cache pool; LLM view will omit it
+
     summary = clean_short(summary, max_len=180)
 
     published = (
@@ -266,7 +235,7 @@ def _entry_to_item(entry: Any, *, feed_url: str) -> Optional[Dict[str, Any]]:
         "summary": summary,
         "published": published,
         "source": _guess_source(feed_url),
-        "_feed_url": feed_url,   # internal only (selection logic)
+        "_feed_url": feed_url, 
     }
 
 async def fetch_single_rss(http_client: httpx.AsyncClient, url: str) -> List[Dict[str, Any]]:
@@ -284,9 +253,7 @@ async def fetch_single_rss(http_client: httpx.AsyncClient, url: str) -> List[Dic
     except Exception:
         return []
 
-# ----------------------------
 # 5) Deterministic business gates (safety + relevancy)
-# ----------------------------
 
 LOW_VALUE_SOURCES = {
     "producthunt.com",
@@ -378,7 +345,7 @@ def _detect_intent(text: str, source: str) -> Tuple[str, int]:
     return intent, score
 
 def filter_and_rank_items_for_llm(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    # 1) safety filter (politics/terror/death/adult/spam etc.)
+   
     combined_texts = [_combined_item_text(it) for it in items]
     safety = filter_texts(combined_texts)
     allowed_set = set(safety.allowed)
@@ -389,11 +356,11 @@ def filter_and_rank_items_for_llm(items: List[Dict[str, Any]]) -> List[Dict[str,
         if txt in allowed_set:
             safe_items.append(it)
 
-    # 2) relevancy scoring + hard drops
+ 
     scored: List[Tuple[int, str, Dict[str, Any]]] = []
     for it in safe_items:
         if _is_spotify_global_feed(it):
-            continue  # drop noisy global charts
+            continue  
 
         txt = _combined_item_text(it)
         if _is_hard_drop(txt):
@@ -402,7 +369,6 @@ def filter_and_rank_items_for_llm(items: List[Dict[str, Any]]) -> List[Dict[str,
         src = _source_domain(it)
         intent, score = _detect_intent(txt, src)
 
-        # boost Spotify TR items
         if _is_spotify_tr_feed(it):
             intent = "music"
             score += 6
@@ -413,7 +379,6 @@ def filter_and_rank_items_for_llm(items: List[Dict[str, Any]]) -> List[Dict[str,
     scored.sort(key=lambda x: (-x[0], x[1].lower()))
     filtered = [it for _, __, it in scored]
 
-    # 3) keep stable variety
     return filtered
 
 async def fetch_rss_items(http_client: httpx.AsyncClient) -> List[Dict[str, Any]]:
@@ -425,17 +390,13 @@ async def fetch_rss_items(http_client: httpx.AsyncClient) -> List[Dict[str, Any]
 
     filtered = filter_and_rank_items_for_llm(all_items)
 
-    # keep some randomness after quality gate
     random.shuffle(filtered)
     return filtered[:MAX_ITEMS_TOTAL]
 
-# ----------------------------
-# 6) LLM prompt + sanitize
-# ----------------------------
 
 def build_trend_system_prompt() -> str:
     return f"""
-Sen bir "Market Intelligence Analyst" yapay zekasısın. Telekomünikasyon şirketi (demo) için gündemi analiz ediyorsun.
+Sen bir "Market Intelligence Analyst"sin. Telekomünikasyon şirketi (demo) için gündemi analiz ediyorsun.
 
 Amaç:
 - GERÇEK gündemden, bireysel telekom müşterisine satış konuşmasında kullanılabilir sinyaller üret.
@@ -473,7 +434,7 @@ Aşağıdaki bağlam verisini analiz et ve {LLM_SIGNAL_COUNT_MIN}-{LLM_SIGNAL_CO
 Önemli:
 - Telco ile bağ kurulamayanları ELE.
 - Description sadece başlıktan/bağlamdan türesin; uydurma spec/numara olmasın.
-- Economy sinyali üretme.
+- Ekonomi sinyali üretme.
 
 Context (JSON):
 {payload}
@@ -563,7 +524,6 @@ def sanitize_intelligence(intel: Dict[str, Any]) -> Dict[str, Any]:
 
         stype = _allowed_signal_type(str(s.get("signal_type", "OTHER")))
 
-        # ECONOMY drop is strict (and ECONOMY isn't even allowed anymore, but just in case)
         if stype == "ECONOMY":
             continue
 
@@ -572,7 +532,6 @@ def sanitize_intelligence(intel: Dict[str, Any]) -> Dict[str, Any]:
         src = clean_short(str(s.get("source", "")), max_len=80)
         pub = clean_short(str(s.get("published", "")), max_len=80)
 
-        # infer intent from title/desc (deterministic)
         intent, _ = _detect_intent(f"{title} {desc}", src)
         hook = _enforce_hook(str(s.get("marketing_hook", "")), intent)
 
@@ -599,9 +558,8 @@ def sanitize_intelligence(intel: Dict[str, Any]) -> Dict[str, Any]:
 
     return intel
 
-# ----------------------------
+
 # 7) Deterministic agenda cards (no LLM required)
-# ----------------------------
 
 def _mk_signal(signal_type: str, title: str, description: str, source: str, published: str, intent: str) -> Dict[str, Any]:
     return {
@@ -641,7 +599,7 @@ def build_calendar_signals(official_holidays: List[str], school_breaks: List[str
     out: List[Dict[str, Any]] = []
     today = datetime.now().strftime("%Y-%m-%d")
 
-    # School breaks (very valuable)
+    # School breaks
     for e in school_breaks[:2]:
         out.append(
             _mk_signal(
@@ -697,9 +655,9 @@ def build_calendar_signals(official_holidays: List[str], school_breaks: List[str
 
     return out
 
-# ----------------------------
+
 # 8) LLM minimal context (reduce load)
-# ----------------------------
+
 
 def _llm_item_view(it: Dict[str, Any]) -> Dict[str, Any]:
     """
@@ -737,14 +695,13 @@ def _fallback_intelligence_from_context(context: Dict[str, Any]) -> Dict[str, An
         "marketable_signals": signals,
     }
 
-# ----------------------------
+
 # 9) Run + Save cache
-# ----------------------------
 
 async def run_trend_job() -> Dict[str, Any]:
     load_dotenv(dotenv_path=os.getenv("DOTENV_PATH", ".env"))
 
-    # IMPORTANT: http/proxy settings unchanged (build_async_httpx_client is the same)
+
     http_client = build_async_httpx_client(timeout_s=120.0)
 
     try:
@@ -757,17 +714,17 @@ async def run_trend_job() -> Dict[str, Any]:
 
         rss_items, trends, weather = await asyncio.gather(rss_task, trends_task, weather_task)
 
-        # Grab spotify TR items for deterministic signal
+ 
         spotify_tr = [it for it in rss_items if _is_spotify_tr_feed(it)]
 
-        # Titles for quick visibility (not for LLM load)
+
         news_titles = [it["title"] for it in rss_items if it.get("title")]
 
-        # LLM payload (minimal)
+  
         curated = rss_items[:MAX_LLM_ITEMS]
         llm_news_items = [_llm_item_view(it) for it in curated]
 
-        # Reduce other payload parts
+   
         context = {
             "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "weather": weather,
@@ -803,13 +760,13 @@ async def run_trend_job() -> Dict[str, Any]:
             logger.warning("LLM timeout — deterministic fallback used.")
             intel = _fallback_intelligence_from_context(context)
 
-        # Deterministic “agenda cards” ALWAYS added (format unchanged)
+  
         deterministic_signals: List[Dict[str, Any]] = []
         deterministic_signals += build_music_signals_from_spotify(spotify_tr)
         deterministic_signals += build_calendar_signals(holiday_list, school_breaks, weather)
 
         existing = intel.get("marketable_signals", []) or []
-        # Merge without duplicating identical titles
+
         seen_titles = set()
         merged: List[Dict[str, Any]] = []
         for s in deterministic_signals + existing:
@@ -817,12 +774,12 @@ async def run_trend_job() -> Dict[str, Any]:
             if not t or t in seen_titles:
                 continue
             seen_titles.add(t)
-            # ECONOMY hard drop safety
+     
             if (s.get("signal_type") or "").upper() == "ECONOMY":
                 continue
             merged.append(s)
 
-        # cap total
+      
         intel["marketable_signals"] = merged[: (LLM_SIGNAL_COUNT_MAX + 6)]
 
         final_report = {

@@ -6,9 +6,8 @@ Purpose:
 - Keep Chroma usage simple, explicit, and debuggable.
 - Allow metadata filtering & future hybrid retrieval.
 
-AI concept note:
 - "Vector store" = memory of knowledge chunks.
-- We will store PRODUCT CATALOG here (stable knowledge source).
+- store PRODUCT CATALOG here
 """
 
 from __future__ import annotations
@@ -23,8 +22,6 @@ from config.settings import SETTINGS
 
 class VectorStore:
     """
-    Thin wrapper around Chroma HttpClient.
-
     Design choice (important):
     - We DO NOT bind an embedding_function here.
     - We compute embeddings explicitly (via EmbeddingsClient) and pass them in.
@@ -37,9 +34,7 @@ class VectorStore:
             port=int(SETTINGS.VECTOR_DB_PORT),
         )
 
-    # ----------------------------
     # Collections
-    # ----------------------------
     def get_or_create_collection(
         self,
         name: str,
@@ -57,9 +52,7 @@ class VectorStore:
     def delete_collection(self, name: str) -> None:
         self._client.delete_collection(name=name)
 
-    # ----------------------------
     # Upsert
-    # ----------------------------
     def upsert_documents(
         self,
         collection: Collection,
@@ -88,9 +81,9 @@ class VectorStore:
             metadatas=metadatas,
         )
 
-    # ----------------------------
+
     # Query
-    # ----------------------------
+
     def query(
         self,
         collection: Collection,

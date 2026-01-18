@@ -1,10 +1,8 @@
-# DOSYA: src/adapters/http_client.py
-"""
-HTTP client factory for the project (Pulse demo).
 
-Why this exists:
+"""
+
 - Centralize proxy handling for Vodafone on-prem access (Model Gateway).
-- Centralize TLS verify behavior (often disabled in internal hackathon envs).
+- Centralize TLS verify behavior.
 - Provide consistent sync/async httpx clients.
 
 AI concept note:
@@ -23,7 +21,6 @@ from config.settings import SETTINGS
 
 
 def _default_headers() -> dict[str, str]:
-    # Minimal headers; do NOT add credentials here.
     return {
         "User-Agent": "Pulse-Demo/1.0",
         "Accept": "application/json,text/plain,*/*",
@@ -31,12 +28,7 @@ def _default_headers() -> dict[str, str]:
 
 
 def _verify_tls() -> bool:
-    """
-    TLS verification switch.
 
-    Old code had verify=False scattered across files.
-    Now it's controlled via env: HTTPX_VERIFY_TLS (demo default: false).
-    """
     return SETTINGS.HTTPX_VERIFY_TLS
 
 
@@ -46,8 +38,6 @@ def build_sync_httpx_client(
     verify: Optional[bool] = None,
 ) -> httpx.Client:
     """
-    Synchronous httpx client (e.g., OpenAI sync embeddings).
-
     Proxy note:
     - We rely on proxy env vars (http_proxy/https_proxy/no_proxy)
       being applied centrally by SETTINGS on import.

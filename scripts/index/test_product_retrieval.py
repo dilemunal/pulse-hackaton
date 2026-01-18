@@ -1,7 +1,5 @@
 """
-Sanity test for Product Catalog Retrieval (Pulse demo).
 
-What it does:
 - Connects to Chroma collection
 - Runs a few queries
 - Shows top-k results with metadata

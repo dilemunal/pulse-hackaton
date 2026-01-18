@@ -7,7 +7,6 @@ What it does:
 - Validates output shape (lightweight)
 - Updates customers table with derived persona fields
 
-AI concept note:
 - This is the "offline enrichment job" that turns raw CRM-ish rows into AI-enriched features.
 """
 
@@ -28,9 +27,8 @@ from src.prompts.persona_analysis import (
 )
 
 
-# -----------------------------
+
 # DB: Fetch batch
-# -----------------------------
 def fetch_unprocessed_customers(*, limit: int, offset: int) -> List[Dict[str, Any]]:
     """
     Returns list of dicts that match prompt expectations.
@@ -86,9 +84,8 @@ def fetch_unprocessed_customers(*, limit: int, offset: int) -> List[Dict[str, An
     return customers
 
 
-# -----------------------------
 # Validation (lightweight demo)
-# -----------------------------
+
 def _as_int_0_100(x: Any) -> int:
     v = int(x)
     if v < 0:
@@ -100,7 +97,7 @@ def _as_int_0_100(x: Any) -> int:
 
 def _validate_one(item: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Normalize and validate one result item. Raises ValueError on hard mismatch.
+    Normalize and validate one result item. 
     """
     required = [
         "id",
@@ -125,18 +122,13 @@ def _validate_one(item: Dict[str, Any]) -> Dict[str, Any]:
     interests = item.get("interests") or []
     if not isinstance(interests, list):
         interests = []
-    
-    # Temizle ve string'e çevir
+
     interests = [str(x)[:50] for x in interests if x and str(x).lower() != "genel"]
     
     # Eğer hiç ilgi alanı yoksa, "Keşfetmeye Açık" gibi daha pozitif bir etiket kullan
     # ya da Sales AI'ın "Genel" kelimesine alerjisi olduğu için boş bırak.
     if not interests:
          interests = ["Dijital Yaşam"] # 'Genel' yerine daha havalı bir dolgu
-    
-    # 3'e tamamlama zorunluluğunu (while döngüsünü) KALDIRIN.
-    # Postgres Array tipi zaten değişken uzunluğu destekler.
-    # LLM 2 tane bulduysa 2 tane kalsın, zorla "Genel" eklemeyelim.
 
     label = str(item.get("label", "Müşteri"))[:80] # 'Genel Persona' yerine 'Müşteri' veya 'Değerli Üyemiz'
     reasoning = str(item.get("reasoning", "")).strip()[:400]
@@ -169,9 +161,6 @@ def validate_payload(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
     return normalized
 
 
-# -----------------------------
-# DB: Update
-# -----------------------------
 def update_customers(results: List[Dict[str, Any]]) -> int:
     """
     Writes enrichment back into customers table.
@@ -181,7 +170,6 @@ def update_customers(results: List[Dict[str, Any]]) -> int:
 
     with db_cursor() as (conn, cur):
         for r in results:
-            # dashboard-friendly label like old code: [Label] reasoning
             final_label = f"[{r['label']}] {r['reasoning']}".strip()
 
             cur.execute(
@@ -211,9 +199,8 @@ def update_customers(results: List[Dict[str, Any]]) -> int:
     return len(results)
 
 
-# -----------------------------
 # LLM call
-# -----------------------------
+
 async def call_persona_llm(customers: List[Dict[str, Any]]) -> Dict[str, Any]:
     """
     Calls Vodafone gateway LLM and expects JSON object output.
@@ -242,9 +229,9 @@ async def call_persona_llm(customers: List[Dict[str, Any]]) -> Dict[str, Any]:
     return json.loads(resp.choices[0].message.content)
 
 
-# -----------------------------
+
 # Orchestrator
-# -----------------------------
+
 async def run_persona_job(*, batch_size: int = 25, max_total: Optional[int] = 300) -> int:
     """
     Runs enrichment until no more unprocessed customers (or max_total reached).
@@ -272,6 +259,5 @@ async def run_persona_job(*, batch_size: int = 25, max_total: Optional[int] = 30
     return total_updated
 
 
-# Local run helper
 if __name__ == "__main__":
     asyncio.run(run_persona_job(batch_size=20))

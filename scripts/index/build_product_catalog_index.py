@@ -2,7 +2,7 @@
 Build Product Catalog Vector Index for Pulse (demo).
 
 What it does:
-- Reads stable product catalog from Postgres (truth source)
+- Reads stable product catalog from Postgres
 - Creates a Chroma collection (vodafone_products / pulse_products)
 - Upserts documents with rich metadata for filtering (category/segment/channel/etc.)
 
@@ -25,7 +25,7 @@ from src.adapters.embeddings import VodafoneEmbeddingFunction
 
 
 def _safe_load_env() -> None:
-    # Avoid python-dotenv stdin edge-case by always specifying path
+
     load_dotenv(dotenv_path=os.getenv("DOTENV_PATH", ".env"))
 
 
@@ -34,7 +34,7 @@ def _build_index_text(name: str, category: str, price: float, specs: Dict[str, A
     Build the text that will be embedded.
     Keep it deterministic and information-dense.
     """
-    # Flatten specs into key:value phrases
+
     spec_parts = []
     for k, v in (specs or {}).items():
         if isinstance(v, dict):
@@ -61,8 +61,7 @@ def _to_metadata(product_code: str, name: str, category: str, price: float, spec
         "is_active": True,
     }
 
-    # common filter keys (if present)
-    # NOTE: Chroma metadata supports primitive types; avoid nested dicts here.
+   
     if specs:
         for key in ["segment", "subscription_type", "channel", "validity", "contract_months", "type", "brand", "storage"]:
             if key in specs and specs[key] is not None:
@@ -164,7 +163,6 @@ def build_product_catalog_index(
 
     flush()
 
-    # quick sanity: count
     try:
         c = collection.count()
         print(f"✅ Chroma index built. collection={collection_name} size={c}")

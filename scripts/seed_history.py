@@ -1,9 +1,8 @@
-# DOSYA: scripts/seed_history.py
 """
-Seed purchase_history table (Pulse demo) - SMART VERSION.
+Seed purchase_history table (Pulse demo) 
 
 Amaç:
-- Rastgele veri yerine "Tutarlı" (Consistent) satın alma geçmişi oluşturmak.
+- Rastgele veri yerine tutarlı satın alma geçmişi oluşturmak.
 - Böylece AI, geçmişe bakınca "Bu müşteri Gamer", "Bu müşteri Gezgin" diyebilsin.
 """
 
@@ -16,8 +15,6 @@ from typing import List, Tuple
 from dotenv import load_dotenv
 
 from src.db.connection import db_cursor
-
-# --- 1. ÖZELLEŞTİRİLMİŞ ÜRÜN HAVUZLARI ---
 
 # Gamer Profili (Gençler, FreeZone)
 PRODUCTS_GAMER = [
@@ -87,7 +84,7 @@ def seed_history(*, random_seed: int = 42) -> int:
         rows: List[Tuple] = []
 
         for cid, segment, sub_type, age, arpu in customers:
-            # --- 2. GİZLİ PERSONA ATAMASI (Pattern Injection) ---
+            # Pattern Injection
             # Müşteriye bir "Karakter" biçiyoruz ki geçmişi tutarlı olsun.
             
             archetype = "STANDARD"
@@ -138,7 +135,7 @@ def seed_history(*, random_seed: int = 42) -> int:
                     channel = random.choice(CHANNELS_DIGITAL + CHANNELS_PHYSICAL)
 
                 days_ago = random.randint(1, 360)
-                score = random.randint(1, 5) # AI için engagement skoru (opsiyonel)
+                score = random.randint(1, 5) # AI için engagement skoru
 
                 rows.append((cid, product, days_ago, channel, round(price, 2), score))
 

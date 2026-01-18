@@ -1,13 +1,10 @@
-# src/domain/safety.py
 """
 Brand-safety filter for Pulse (demo).
 
 Goal:
 - Filter out topics we do NOT want to use as a marketing hook.
 - Keep it deterministic (rule-based), not LLM-based.
-
-Why?
-- Jury loves "guardrails": LLM is not allowed to monetize tragedies/politics.
+ LLM is not allowed to monetize tragedies/politics.
 """
 
 from __future__ import annotations
@@ -33,7 +30,7 @@ BLOCK_PATTERNS: list[tuple[str, str]] = [
     (r"\b(kaza|yangın|çökme|deprem|sel|facia)\b", "disaster/accident"),
     (r"\b(ölüm|öldü|cenaze|cinayet|intihar)\b", "death/crime"),
     # Adult / explicit
-    (r"\b(porno|erotik|escort)\b", "adult"),
+    (r"\b(erotik|18)\b", "adult"),
 ]
 
 # Optional: low-quality / spammy signals
@@ -79,7 +76,6 @@ def filter_texts(texts: Iterable[str]) -> SafetyResult:
 
         allowed.append(t)
 
-    # de-dup while preserving order
     seen = set()
     uniq_allowed: List[str] = []
     for t in allowed:

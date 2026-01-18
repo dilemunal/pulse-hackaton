@@ -1,11 +1,10 @@
-# DOSYA: scripts/seed_customers.py
 """
 Seed ~1500 synthetic customers into Postgres (Pulse demo).
 
 Creates:
 - customers table (CRM truth source)
 
-Design goals (demo):
+Design goals :
 - Realistic-ish but intentionally "messy" data (no-bias)
 - AI-derived fields are left empty ("Not Processed") for persona job later
 """
