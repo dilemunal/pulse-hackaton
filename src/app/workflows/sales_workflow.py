@@ -23,16 +23,27 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import sys
 from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
 from openai import AsyncOpenAI
+from loguru import logger  # Demo için eklendi
 
 from config.settings import SETTINGS
 from src.db.connection import db_cursor
 from src.adapters.embeddings import EmbeddingsClient
 from src.adapters.vector_store import VectorStore
 
+# --- DEMO İÇİN ÖZEL LOGGER AYARLARI ---
+logger.remove()
+logger.add(
+    sys.stderr,
+    format="<green>{time:HH:mm:ss}</green> | <level>{message}</level>",
+    level="INFO",
+    colorize=True
+)
+# ---------------------------------------
 
 
 # DB: Setup 
@@ -58,7 +69,6 @@ def setup_sales_table() -> None:
         conn.commit()
 
 
-
 # World context loader
 
 def _safe_list(x: Any) -> List[Any]:
@@ -66,65 +76,37 @@ def _safe_list(x: Any) -> List[Any]:
 
 
 def load_world_context(path: str = "data/cache/intelligence.json") -> Dict[str, Any]:
-    print(f"\n🔴 [DEBUG BAŞLADI] Hedef Dosya: {path}")
-    print(f"🔴 [DEBUG] Tam Yol: {os.path.abspath(path)}")
+    # Demo logu
+    logger.opt(colors=True).info(f"<dim>Gündem verisi yükleniyor: {path}</dim>")
 
     if not os.path.exists(path):
-        print("❌ [HATA] Dosya sistemde YOK! Trend Job çalıştı mı?")
+        logger.warning("Dosya bulunamadı! Trend Job çalıştırılmalı.")
         return {"context_summary": "Veri Yok", "news_titles": [], "signals": []}
     
     try:
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
-        print("✅ [BAŞARILI] JSON dosyası yüklendi.")
-        print(f"🔍 [DEBUG] JSON Kök Anahtarlar: {list(data.keys())}") 
     except Exception as e:
-        print(f"❌ [HATA] JSON parse hatası: {e}")
+        logger.error(f"JSON hatası: {e}")
         return {"context_summary": "Veri Bozuk", "news_titles": [], "signals": []}
 
     intel = data.get("intelligence")
     if not intel:
-        print("❌ [HATA] JSON içinde 'intelligence' anahtarı EKSİK veya BOŞ!")
         return {"context_summary": "Eksik Veri", "news_titles": [], "signals": []}
     
-    print(f"🔍 [DEBUG] 'intelligence' Anahtarları: {list(intel.keys())}")
-
-
     signals = intel.get("marketable_signals")
-    if signals is None:
-        print("❌ [HATA] 'marketable_signals' anahtarı hiyerarşide YOK!")
-    elif isinstance(signals, list):
-        print(f"✅ [BİLGİ] 'marketable_signals' bulundu. Eleman Sayısı: {len(signals)}")
-        if len(signals) > 0:
-            print(f"📄 [ÖRNEK] İlk Sinyal Başlığı: {signals[0].get('title', 'Başlık Yok')}")
-            print(f"📄 [ÖRNEK] İlk Sinyal Tipi: {signals[0].get('signal_type', 'Tip Yok')}")
-    else:
-        print(f"❌ [HATA] 'marketable_signals' bir liste değil! Tipi: {type(signals)}")
-
-
     news_titles = []
 
     if isinstance(signals, list):
         for s in signals:
             if isinstance(s, dict) and s.get("title"):
                 news_titles.append(str(s["title"]).strip())
-    
-   
-    if not news_titles:
-        print("[UYARI] Sinyallerden başlık çıkmadı. Raw Inputs kontrol ediliyor...")
-        raw_news = data.get("raw_inputs", {}).get("news", [])
-        if raw_news:
-            print(f"[BİLGİ] Raw Inputs içinde {len(raw_news)} haber bulundu.")
-     
-
-    print(f"🏁 [SONUÇ] Sales Workflow'a giden toplam başlık sayısı: {len(news_titles)}")
 
     return {
         "context_summary": str(intel.get("context_summary", "Gündem Verisi")),
         "news_titles": news_titles,
         "signals": signals if isinstance(signals, list) else [],
     }
-
 
 
 # Customer 360 
@@ -218,7 +200,6 @@ def fetch_customer_batch(*, limit: int, offset: int) -> List[Dict[str, Any]]:
     return batch
 
 
-
 # Product retrieval (RAG candidates)
 
 def _product_name_from_doc(doc: str) -> str:
@@ -273,7 +254,6 @@ def retrieve_product_candidates(
     return out
 
 
-
 # AŞAMA 1: STRATEJİST AI 
 
 async def decide_sales_strategy(
@@ -282,11 +262,12 @@ async def decide_sales_strategy(
     customer_profile: Dict[str, Any],
     world_context: Dict[str, Any]
 ) -> Dict[str, Any]:
-    """
-    Stratejist AI: Müşteriyi ve Gündemi analiz eder.
-    Hangi haberin kullanılacağına ve hangi ürün kategorisinin aranacağına AI karar verir.
-    """
     
+    # DEMO LOG: Stratejist başlıyor
+    c_name = customer_profile.get("full_name", "Müşteri")
+    c_persona = customer_profile.get("persona", "Bilinmiyor")
+    logger.opt(colors=True).info(f"🤖 <cyan>AI STRATEJİST DEVREDE</cyan> | Analiz: <bold>{c_name}</bold> ({c_persona})")
+
     # Müşteri Profilini Hazırla
     cust_summary = {
         "demographics": {
@@ -296,7 +277,7 @@ async def decide_sales_strategy(
             "device": customer_profile.get("device_model")
         },
         "interests": customer_profile.get("interests", []),
-        "history": customer_profile.get("history"),  # Geçmiş alımlar
+        "history": customer_profile.get("history"),
         "behavior": {
             "current_intent": customer_profile.get("intent"),
             "data_left_gb": customer_profile.get("data_left_gb"),
@@ -304,35 +285,28 @@ async def decide_sales_strategy(
         }
     }
 
-    # Gündem Başlıkları
     news_titles = (world_context.get("news_titles") or [])[:25]
-    print(f"\n[AI STRATEJİST] Müşteri ID: {customer_profile.get('id')} - Gönderilen Haber Sayısı: {len(news_titles)}")
 
     system_prompt = """
     Sen Vodafone Pulse sisteminin "Yaratıcı Satış Stratejisti"sin.
-    Görevin: Müşteri verisi ile Gündem arasında "Bağ Kurmak" (Connecting the dots).
+    Görevin: Müşteri verisi ile Gündem arasında "Bağ Kurmak".
 
     DURUM:
     Müşterilerimiz için "Genel Kampanya" en son çaredir. Bizim farkımız, gündemi kullanarak kişisel bağ kurmaktır.
     
     TALİMATLAR:
-    1. Asla hemen pes edip "GENEL_KAMPANYA" seçme. Haber listesindeki en ufak ipucunu bile değerlendir.
+    1. Asla hemen pes edip "GENEL_KAMPANYA" seçme. 
     2. YARATICI BAĞLAR KUR:
        - Haber: "Hafta sonu yağmurlu" -> Strateji: "Evde kalıp film izle (Video Pass)" veya "Oyun oyna (Gamer Pass)".
-       - Haber: "Okullar tatil" -> Strateji: "Gençler için sosyal medya paketi" veya "Karne hediyesi cihaz"."Seyahat için HER SEY DAHIL PASAPORT","Restoranlarda VPAY ile indirim".
-       - Haber: "Popüler bir şarkı viral oldu" -> Strateji: "Spotify/Müzik Pass".
-       - Müşterinin ilgisi "Video" ve gündem boş mu? -> "Hafta sonu" kartını veya "Havalar soğudu" kartını kullan.
+       - Haber: "Okullar tatil" -> Strateji: "Gençler için sosyal medya paketi" veya "Karne hediyesi cihaz".
+       - Haber: "Popüler şarkı viral" -> Strateji: "Spotify/Müzik Pass".
     3. Eğer müşterinin ilgisi ile haber arasında %10 bile alaka varsa, o haberi SEÇ.
 
-    ANALİZ SÜRECİ:
-    - Müşterinin [İlgi Alanları + Geçmişi + Niyeti] ne?
-    - Gündemde buna "kanca" olabilecek ne var?
-    
     ÇIKTI FORMATI (JSON):
     {
-        "selected_news_title": "Seçilen haber başlığı (Mümkünse dolu olsun)",
-        "strategy_reasoning": "Zorlama da olsa kurduğun mantık (Örn: Haber X, ama müşteri Video seviyor, o yüzden 'Hafta Sonu Keyfi' konseptiyle bağlıyorum.)",
-        "search_query": "Ürün kataloğu için arama terimi (Örn: 'sınırsız video pass')"
+        "selected_news_title": "Seçilen haber başlığı",
+        "strategy_reasoning": "Mantık (Örn: Haber X, ama müşteri Video seviyor, 'Hafta Sonu Keyfi' konseptiyle bağlıyorum.)",
+        "search_query": "Ürün kataloğu için arama terimi"
     }
     """
 
@@ -352,23 +326,30 @@ async def decide_sales_strategy(
             response_format={"type": "json_object"},
             extra_body={"metadata": {"username": SETTINGS.username, "pwd": SETTINGS.pwd}},
         )
-        return json.loads(resp.choices[0].message.content)
+        result = json.loads(resp.choices[0].message.content)
+        
+        # DEMO LOG: Strateji sonucu
+        s_news = result.get("selected_news_title", "Yok")
+        s_query = result.get("search_query", "-")
+        logger.opt(colors=True).info(f"   📰 <cyan>Seçilen Gündem:</cyan> {s_news}")
+        logger.opt(colors=True).info(f"   🧠 <cyan>Strateji:</cyan> {s_query}")
+        
+        return result
+
     except Exception as e:
-        print(f"Strateji AI Hatası: {e}")
-        # Fallback
+        logger.error(f"Strateji AI Hatası: {e}")
         return {
             "selected_news_title": "YOK",
-            "search_query": f"{cust_summary['demographics']['segment']} popüler paketler",
-            "strategy_reasoning": "AI yanıt veremedi, varsayılan segment önerisi yapılıyor."
+            "search_query": f"{cust_summary['demographics']['segment']} paket",
+            "strategy_reasoning": "Fallback"
         }
-
 
 
 # AŞAMA 2: SALES BRAIN 
 
 def build_sales_brain_system_prompt() -> str:
     return """
-Sen Pulse sistemindeki "Satış & Pazarlama Beyni"sin. Stratejistin belirlediği yoldan ilerleyerek son vuruşu yapacaksın.
+Sen Pulse sistemindeki "Satış & Pazarlama Beyni"sin. 
 
 Görevin:
 1. Sana verilen "selected_news" (Gündem) ve "product_candidates" (Aday Ürünler) arasından en mantıklı eşleşmeyi yap.
@@ -376,20 +357,16 @@ Görevin:
 
 Kırmızı çizgiler:
 - Uydurma yok: SADECE sana verilen haber başlığını ve ürünleri kullan.
-- "Vodafone X ortaklığı", "bedava/ücretsiz" gibi doğrulanması zor iddialar YAZMA.
-- Türkçe yaz. Samimi, kişisel, sıcak. Ama "aşırı satış/abartı" yok.
-- Her mesaj "Selam" ile başlamasın. Yaşa göre hitap değişebilir:
-  - genç (<=28) ise first_name ile daha enerjik,
-  - yetişkin ise first_name + daha dengeli,
-  - first_name yoksa nötr hitap.
+- "Vodafone X ortaklığı", "bedava" gibi iddialar YAZMA.
+- Türkçe yaz. Samimi, kişisel, sıcak. "Aşırı satış" yok.
 
 ÇIKTI (JSON):
 {
-  "selected_news_titles": ["..."],            // Kullandığın haber
-  "chosen_product_code": "....",             // Seçtiğin ürünün kodu
-  "suggested_product": "....",               // Seçtiğin ürünün adı
-  "marketing_headline": "....",              // Kısa, ilgi çekici başlık
-  "marketing_content": "....",               // 2-4 cümle, kişisel mesaj
+  "selected_news_titles": ["..."],            
+  "chosen_product_code": "....",             
+  "suggested_product": "....",               
+  "marketing_headline": "....",              
+  "marketing_content": "....",               
   "ai_reasoning": {                          
     "customer_facts_used": ["..."],     
     "product_facts_used": ["..."],      
@@ -406,9 +383,14 @@ async def run_sales_brain(
     cust: Dict[str, Any],
     product_candidates: List[Dict[str, Any]],
 ) -> Dict[str, Any]:
+    
+    # DEMO LOG: Brain Başlıyor
+    logger.opt(colors=True).info("💡 <yellow>SALES BRAIN (YARATICI KATMAN) DEVREDE</yellow>")
+    logger.opt(colors=True).info("   <dim>Vektör veritabanından gelen ürünler ile gündem birleştiriliyor...</dim>")
+
     payload = {
         "world": {
-            "selected_news": world.get("selected_news", ""),  # Sadece seçilen haberi göster
+            "selected_news": world.get("selected_news", ""),
             "context_summary": world.get("context_summary", ""),
         },
         "customer": cust,
@@ -419,8 +401,6 @@ async def run_sales_brain(
                 "distance": c.get("distance"),
                 "category": (c.get("metadata", {}) or {}).get("category"),
                 "segment": (c.get("metadata", {}) or {}).get("segment"),
-                "channel": (c.get("metadata", {}) or {}).get("channel"),
-                "price_try": (c.get("metadata", {}) or {}).get("price_try"),
                 "doc": (c.get("doc", "")[:700]),
             }
             for c in product_candidates[:8]
@@ -437,7 +417,16 @@ async def run_sales_brain(
         response_format={"type": "json_object"},
         extra_body={"metadata": {"username": SETTINGS.username, "pwd": SETTINGS.pwd}},
     )
-    return json.loads(resp.choices[0].message.content)
+    
+    result = json.loads(resp.choices[0].message.content)
+    
+    # DEMO LOG: Sonuç
+    headline = result.get("marketing_headline", "")
+    prod = result.get("suggested_product", "")
+    logger.opt(colors=True).info(f"   🎁 <yellow>Önerilen Ürün:</yellow> {prod}")
+    logger.opt(colors=True).info(f"   📢 <yellow>Manşet:</yellow> <bold>{headline}</bold>")
+    
+    return result
 
 
 def _pick_candidate_by_code(candidates: List[Dict[str, Any]], code: str) -> Optional[Dict[str, Any]]:
@@ -453,7 +442,6 @@ def _pick_candidate_by_code(candidates: List[Dict[str, Any]], code: str) -> Opti
 def _safe_str(x: Any, max_len: int) -> str:
     s = str(x or "").strip()
     return s[:max_len]
-
 
 
 # DB: Save results
@@ -485,6 +473,8 @@ def save_opportunities(rows: List[Tuple]) -> None:
 # Orchestrator
 
 async def run_sales_workflow(*, batch_size: int = 10, max_total: Optional[int] = 30) -> int:
+    logger.opt(colors=True).info("<bold><green>🚀 PULSE SALES MOTORU BAŞLATILIYOR...</green></bold>")
+    
     setup_sales_table()
     world = load_world_context()
 
@@ -505,11 +495,13 @@ async def run_sales_workflow(*, batch_size: int = 10, max_total: Optional[int] =
             customers = fetch_customer_batch(limit=batch_size, offset=offset)
             if not customers:
                 break
+            
+            logger.info(f"Batch işleniyor: {len(customers)} müşteri...")
 
             out_rows: List[Tuple] = []
 
             for cust in customers:
-                # --- 1. STRATEJİST AI: Gündem ve Strateji Belirle ---
+                # --- 1. STRATEJİST AI ---
                 strategy = await decide_sales_strategy(
                     llm,
                     customer_profile=cust,
@@ -520,18 +512,17 @@ async def run_sales_workflow(*, batch_size: int = 10, max_total: Optional[int] =
                 selected_news = strategy.get("selected_news_title", "")
                 strategy_reasoning = strategy.get("strategy_reasoning", "")
                 
-                # Eğer AI saçmalarsa veya boş dönerse diye basit fallback
                 if not ai_search_query:
                     ai_search_query = f"{cust.get('tariff_segment')} paket"
 
-     
+                # --- 2. RAG RETRIEVAL ---
+                # Demo için log azaltıldı, sadece stratejist ve brain öne çıksın
                 candidates = retrieve_product_candidates(
                     query_text=ai_search_query,
                     k=6,
                 )
 
-                # --- 3. SALES BRAIN: Metni Yaz ---
-
+                # --- 3. SALES BRAIN ---
                 focused_world = world.copy()
                 if selected_news and selected_news != "YOK":
                     focused_world["selected_news"] = selected_news
@@ -554,7 +545,6 @@ async def run_sales_workflow(*, batch_size: int = 10, max_total: Optional[int] =
                 if not suggested_product and chosen:
                     suggested_product = _safe_str(chosen.get("product_name"), 200)
 
-      
                 ai_reasoning_obj = decision.get("ai_reasoning")
                 if not isinstance(ai_reasoning_obj, dict):
                     ai_reasoning_obj = {}
@@ -577,15 +567,17 @@ async def run_sales_workflow(*, batch_size: int = 10, max_total: Optional[int] =
                         json.dumps(ai_reasoning_obj, ensure_ascii=False)[:6000],
                     )
                 )
+                print("-" * 50) # Müşteriler arası ayraç
 
             save_opportunities(out_rows)
 
             processed += len(customers)
             offset += batch_size
-            print(f"✅ Sales workflow wrote: {len(customers)} (total={processed})")
+            
+            logger.success(f"✅ Batch tamamlandı. Toplam İşlenen: {processed}")
 
     return processed
 
 
 if __name__ == "__main__":
-    asyncio.run(run_sales_workflow(batch_size=10, max_total=30))
+    asyncio.run(run_sales_workflow(batch_size=5, max_total=10))

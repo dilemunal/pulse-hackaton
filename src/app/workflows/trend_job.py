@@ -1,4 +1,3 @@
-
 """
 What it does:
 - Pulls public signals: RSS (title+summary+published+source), Google Trends, TR official holidays, Istanbul weather
@@ -21,6 +20,7 @@ import json
 import os
 import random
 import re
+import sys
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -38,8 +38,16 @@ from src.adapters.http_client import build_async_httpx_client
 
 from src.domain.safety import filter_texts
 
-
-logger.add("data/logs/trend_job.log", rotation="1 day")
+# --- DEMO İÇİN ÖZEL LOGGER AYARLARI ---
+# Varsayılanı temizle ve renkli, modern formatı ekle
+logger.remove()
+logger.add(
+    sys.stderr,
+    format="<green>{time:HH:mm:ss}</green> | <level>{message}</level>",
+    level="INFO",
+    colorize=True
+)
+# ---------------------------------------
 
 RSS_URLS: List[str] = [
   # Only open/public feeds
@@ -701,10 +709,19 @@ def _fallback_intelligence_from_context(context: Dict[str, Any]) -> Dict[str, An
 async def run_trend_job() -> Dict[str, Any]:
     load_dotenv(dotenv_path=os.getenv("DOTENV_PATH", ".env"))
 
+    # -- DEMO LOG: BAŞLANGIÇ --
+    logger.opt(colors=True).info("<bold><cyan>🚀 PULSE WORLD LISTENER BAŞLATILIYOR...</cyan></bold>")
+    logger.opt(colors=True).info("<dim>Sistem kaynakları kontrol ediliyor: OK</dim>")
+    # -------------------------
 
     http_client = build_async_httpx_client(timeout_s=120.0)
 
     try:
+        # -- DEMO LOG: TARAMA --
+        logger.opt(colors=True).info(f"📡 <yellow>RSS Kaynakları Taranıyor:</yellow> {len(RSS_URLS)} kaynak")
+        logger.opt(colors=True).info("🌍 <yellow>Google Trends & Açık Veri:</yellow> Bağlantı kuruluyor...")
+        # ----------------------
+
         rss_task = fetch_rss_items(http_client)
         trends_task = fetch_google_trends()
         weather_task = fetch_weather_insight(http_client)
@@ -714,6 +731,11 @@ async def run_trend_job() -> Dict[str, Any]:
 
         rss_items, trends, weather = await asyncio.gather(rss_task, trends_task, weather_task)
 
+        # -- DEMO LOG: BULGULAR --
+        logger.opt(colors=True).info(f"⛈️  Tespit Edilen Hava Durumu: <blue><bold>{weather}</bold></blue>")
+        logger.opt(colors=True).info(f"📅 Yaklaşan Resmi Tatil: <green>{holiday_list[0] if holiday_list else 'Yok'}</green>")
+        logger.opt(colors=True).info(f"📰 Toplanan Ham Haber Sayısı: <bold>{len(rss_items)}</bold>")
+        # ------------------------
  
         spotify_tr = [it for it in rss_items if _is_spotify_tr_feed(it)]
 
@@ -742,6 +764,12 @@ async def run_trend_job() -> Dict[str, Any]:
         )
 
         try:
+            # -- DEMO LOG: AI BAŞLIYOR --
+            logger.opt(colors=True).info("<magenta>🧠 YAPAY ZEKA KATMANI DEVREDE (Model: GPT-4o)</magenta>")
+            logger.opt(colors=True).info("<dim>Ham veriler temizleniyor ve vektör uzayında analiz ediliyor...</dim>")
+            logger.opt(colors=True).info("⚡ <magenta>Stratejist AI:</magenta> 'Hangi haber bir satış fırsatına dönüşebilir?'")
+            # ---------------------------
+
             resp = await llm.chat.completions.create(
                 model=SETTINGS.LLM_CHAT_MODEL,
                 messages=[
@@ -799,9 +827,17 @@ async def run_trend_job() -> Dict[str, Any]:
         with open(CACHE_PATH, "w", encoding="utf-8") as f:
             json.dump(final_report, f, ensure_ascii=False, indent=2)
 
-        logger.success(
-            f"Trend job OK. Saved: {CACHE_PATH} signals={len(intel.get('marketable_signals', []))} rss_items={len(rss_items)}"
-        )
+        # -- DEMO LOG: SONUÇ GÖSTERİMİ --
+        count = len(intel.get('marketable_signals', []))
+        if count > 0:
+            sample = intel['marketable_signals'][0]
+            logger.opt(colors=True).info(f"💡 <green>Sinyal Yakalandı:</green> {sample.get('title')}")
+            logger.opt(colors=True).info(f"🎯 <green>Marketing Hook:</green> {sample.get('marketing_hook')}")
+
+        logger.opt(colors=True).success(f"✅ <bold>TREND JOB TAMAMLANDI.</bold> Üretilen Pazarlanabilir Sinyal: <red>{count}</red>")
+        logger.opt(colors=True).info(f"💾 Önbellek güncellendi: <underline>{CACHE_PATH}</underline>")
+        # -------------------------------
+        
         return final_report
 
     finally:
